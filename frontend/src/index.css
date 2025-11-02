@@ -1,0 +1,21 @@
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base */
+@layer base {
+  html, body, #root { height: 100%; }
+  ::selection { background-color: rgb(var(--primary-rgb) / 0.28); }
+}
+
+/* Utilities propias */
+@layer utilities {
+  /* Ocultar scrollbar */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Auth transitions (usan keyframes definidos en theme.css) */
+  .anim-in-left  { animation: authInLeft  420ms var(--ease-auth) both; }
+  .anim-in-right { animation: authInRight 420ms var(--ease-auth) both; }
+}

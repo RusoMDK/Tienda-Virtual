@@ -1,0 +1,76 @@
+# ─────────────────────────────────────────
+# Node / TypeScript / Builds
+# ─────────────────────────────────────────
+**/node_modules/
+**/dist/
+**/build/
+**/coverage/
+**/.nyc_output/
+**/*.tsbuildinfo
+
+# Caches / Bundlers / Tools
+**/.cache/
+**/.vite/
+**/.parcel-cache/
+**/.turbo/
+**/.next/
+**/.eslintcache
+**/.stylelintcache
+**/storybook-static/
+**/.vercel/
+**/.netlify/
+
+# Test runners / E2E
+**/cypress/videos/
+**/cypress/screenshots/
+**/cypress/downloads/
+**/playwright-report/
+**/test-results/
+
+# Logs
+**/*.log
+**/npm-debug.log*
+**/yarn-debug.log*
+**/pnpm-debug.log*
+
+# ─────────────────────────────────────────
+# Env & Secrets
+# (ignora cualquier .env en cualquier subcarpeta,
+#  pero permite todos los .env.example)
+# ─────────────────────────────────────────
+**/.env
+**/.env.*
+!**/.env.example
+
+# ─────────────────────────────────────────
+# Prisma (mantener migraciones en Git)
+# ─────────────────────────────────────────
+**/prisma/*.db
+**/prisma/*.db-journal
+**/*.sqlite
+**/*.sqlite3
+# NOTA: NO ignores prisma/migrations
+
+# ─────────────────────────────────────────
+# Uploads locales (si existieran)
+# ─────────────────────────────────────────
+# **/uploads/
+# !**/uploads/.gitkeep
+
+# ─────────────────────────────────────────
+# OS / IDE
+# ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# ─────────────────────────────────────────
+# Auxiliares
+# ─────────────────────────────────────────
+repo-structure.txt
+
