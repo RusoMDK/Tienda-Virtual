@@ -24,7 +24,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
   Label,
 } from "@/ui";
 import { useToast } from "@/ui";
@@ -39,12 +38,12 @@ import {
   Pencil,
   X,
   Check,
-  History as HistoryIcon,
   PackageMinus,
   Search,
   Copy,
 } from "lucide-react";
 import ImageUploader, { type UImage } from "../components/ImageUploader";
+import { uploadProductImage } from "@/features/uploads/cloudinary";
 
 /* ─────────────────────────────────────────────────────────────
    Tipos y helpers
@@ -128,6 +127,18 @@ function parsePriceFromRow(row: Record<string, any>): number | null {
   }
   return null;
 }
+
+const imagesToUrls = (arr: UImage[] | undefined) =>
+  (arr ?? []).map((im) => im.url);
+
+/** Helper simple para carpeta por nombre cuando aún no hay slug */
+const slugify = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
 
 /* ─────────────────────────────────────────────────────────────
    Etiquetas humanas para motivos de stock
@@ -289,7 +300,7 @@ export default function AdminProductsPage() {
       currency: string;
       active: boolean;
       categorySlug?: string;
-      images?: UImage[];
+      images?: string[]; // URLs
     }) => adminCreateProduct(payload as any),
     onSuccess: () => {
       toast({ title: "Producto creado", variant: "success" });
@@ -491,6 +502,7 @@ export default function AdminProductsPage() {
           continue;
         }
 
+        const imgs = parseImages(row.images) ?? [];
         const payload = {
           name,
           description: String(row.description ?? "").trim(),
@@ -500,7 +512,7 @@ export default function AdminProductsPage() {
           categorySlug: row.categorySlug
             ? String(row.categorySlug).trim()
             : undefined,
-          images: parseImages(row.images) ?? [],
+          images: imagesToUrls(imgs), // URLs
         };
 
         try {
@@ -548,6 +560,7 @@ export default function AdminProductsPage() {
   /* ───────────── Modal Crear/Editar ───────────── */
   type FormState = {
     id?: string;
+    slug?: string; // para carpeta products/<slug> en edición
     name: string;
     description: string;
     priceStr: string;
@@ -590,6 +603,7 @@ export default function AdminProductsPage() {
       const p = await adminGetProduct(id);
       setForm({
         id: p.id,
+        slug: p.slug,
         name: p.name ?? "",
         description: p.description ?? "",
         priceStr: (p.price / 100).toString(),
@@ -632,7 +646,7 @@ export default function AdminProductsPage() {
         currency: form.currency,
         active: form.active,
         categorySlug: form.categorySlug || undefined,
-        images: form.images,
+        images: imagesToUrls(form.images), // URLs al backend
       });
     } else if (mode === "edit" && form.id) {
       await patchMut.mutateAsync({
@@ -644,7 +658,7 @@ export default function AdminProductsPage() {
           currency: form.currency,
           active: form.active,
           categorySlug: form.categorySlug || undefined,
-          images: form.images,
+          images: imagesToUrls(form.images), // URLs al backend
         },
       });
     }
@@ -1037,7 +1051,7 @@ export default function AdminProductsPage() {
                   <tr>
                     <td
                       colSpan={8}
-                      className="p-6 text-center text-[rgb(var(--danger-rgb))]"
+                      className="p-6 text-center text=[rgb(var(--danger-rgb))]"
                     >
                       No se pudo cargar la lista. Intenta más tarde.
                     </td>
@@ -1534,6 +1548,27 @@ export default function AdminProductsPage() {
                 value={form.images}
                 onChange={(next) => setForm((f) => ({ ...f, images: next }))}
                 max={8}
+                onUpload={async (file) => {
+                  try {
+                    // Carpeta final: Tienda-Virtual/products/<slug|nombre>
+                    const folderSlug =
+                      (form.slug && form.slug.trim()) ||
+                      slugify(form.name) ||
+                      undefined;
+                    const up = await uploadProductImage(file, folderSlug);
+                    return {
+                      url: up.url,
+                      publicId: up.publicId,
+                      position: form.images?.length || 0,
+                    } as UImage;
+                  } catch (e: any) {
+                    toast({
+                      title: e?.message || "No se pudo subir la imagen",
+                      variant: "error",
+                    });
+                    throw e;
+                  }
+                }}
               />
               <div className="text-[11px] opacity-60">
                 Arrastra para reordenar. La primera es la <b>principal</b>.

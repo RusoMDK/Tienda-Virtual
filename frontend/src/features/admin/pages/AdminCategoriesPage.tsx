@@ -360,9 +360,9 @@ export default function AdminCategoriesPage() {
   }, [cats, form.id]);
   const slugConflict = !!form.slug && allSlugs.has(form.slug);
 
-  // Dropdown de padre: sólo raíces (o vacío)
+  // Dropdown de padre: sólo raíces (o vacío) — no mutar `roots` al ordenar
   const parentOptions = useMemo(() => {
-    const list = roots.sort((a, b) => a.name.localeCompare(b.name));
+    const list = [...roots].sort((a, b) => a.name.localeCompare(b.name));
     return [
       { id: "", name: "— (raíz)" },
       ...list.map((c) => ({ id: c.id, name: c.name })),
@@ -381,6 +381,7 @@ export default function AdminCategoriesPage() {
       });
       return;
     }
+    // límite duro por UX (además de validación en uploadToCloudinary)
     if (file.size > 5 * 1024 * 1024) {
       toast({
         title: "Imagen muy pesada",
@@ -389,9 +390,34 @@ export default function AdminCategoriesPage() {
       });
       return;
     }
+
+    // ── NUEVO: carpeta de destino <categories>/<slugPadre>/<slugHijo>
+    const parent = byId.get(form.parentId);
+    const parentSlug = parent?.slug?.trim();
+    const childSlug = (form.slug || slugify(form.name || "")).trim();
+
+    if (!parentSlug || !childSlug) {
+      toast({
+        title: "Faltan slugs",
+        description:
+          "Verifica que la subcategoría tenga nombre/slug y que tenga padre.",
+        variant: "error",
+      });
+      return;
+    }
+
+    const folderPath = `${parentSlug}/${childSlug}`;
+
     try {
       setUploading(true);
-      const up = await uploadToCloudinary(file);
+
+      const up = await uploadToCloudinary(file, {
+        alias: "categories",
+        folder: folderPath, // → Tienda-Virtual/categories/<parent>/<child>
+        acceptMime: ["image/jpeg", "image/png", "image/webp"],
+        maxBytes: 5 * 1024 * 1024,
+      });
+
       setForm((f) => ({
         ...f,
         imageUrl: up.url,
@@ -405,6 +431,7 @@ export default function AdminCategoriesPage() {
       if (fileRef.current) fileRef.current.value = "";
     }
   };
+
   const onFileChange = (files: FileList | null) => {
     const file = files?.[0];
     if (file) void doUpload(file);
@@ -496,7 +523,6 @@ export default function AdminCategoriesPage() {
           ? text || "No se puede eliminar por relaciones existentes."
           : "No se pudo eliminar.";
 
-      // Afinar por contenido del backend si llega
       if (/subcategor/i.test(text) || /child/i.test(text)) {
         msg = "No se puede eliminar la categoría: tiene subcategorías.";
       } else if (/product/i.test(text) || /producto/i.test(text)) {
@@ -547,7 +573,6 @@ export default function AdminCategoriesPage() {
       (c) => c.parentId === form.id
     );
 
-    // Si es categoría raíz y tiene subcategorías -> bloquear con toast claro
     if (!isSub && hasChildren) {
       toast({
         title: "No se puede eliminar la categoría",
@@ -740,7 +765,7 @@ export default function AdminCategoriesPage() {
                         </span>
                       )}
 
-                      {/* 👇 Nuevo: botón Editar para poder seleccionar la CATEGORÍA raíz */}
+                      {/* Editar raíz */}
                       <Button
                         size="sm"
                         variant="secondary"
@@ -768,7 +793,7 @@ export default function AdminCategoriesPage() {
                       </Button>
                     </div>
 
-                    {/* Grid de subcategorías (visual) */}
+                    {/* Grid de subcategorías */}
                     {isOpen && (
                       <div className="px-3 pb-3">
                         {kids.length === 0 ? (
@@ -831,7 +856,7 @@ export default function AdminCategoriesPage() {
       <div className="md:col-span-6 space-y-3">
         {/* Undo */}
         {lastDeleted && (
-          <div className="rounded-xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-3 flex items-center justify-between">
+          <div className="rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-3 flex items-center justify-between">
             <div className="text-sm">
               Eliminaste <strong>{lastDeleted.name}</strong>. ¿Deshacer?
             </div>
@@ -1071,7 +1096,6 @@ function BulkCreate({ cats, onDone }: { cats: Cat[]; onDone: () => void }) {
     let trimmed = false;
     try {
       for (const item of plan) {
-        // Enforzar 2 niveles
         const path =
           item.names.length > 2
             ? ((trimmed = true), item.names.slice(0, 2))

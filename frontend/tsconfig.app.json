@@ -26,7 +26,8 @@
     /* 👇 Alias */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@cloudinary": ["features/uploads/cloudinary.ts"]
     }
   },
   "include": ["src"]

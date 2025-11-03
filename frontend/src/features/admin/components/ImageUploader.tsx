@@ -1,8 +1,12 @@
 // src/features/admin/components/ImageUploader.tsx
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import { Button, Input } from "@/ui";
-import { uploadToCloudinary } from "@/features/uploads/cloudinary";
-import { adminUploadDelete } from "@/features/admin/api";
+import {
+  uploadToCloudinary,
+  deleteCloudinary,
+  isCloudinaryUrl,
+  extractPublicIdFromUrl,
+} from "@/features/uploads/cloudinary";
 import {
   UploadCloud,
   Trash2,
@@ -20,20 +24,48 @@ export type UImage = {
   alt?: string;
 };
 
+type UploaderReturn = { url: string; publicId?: string };
+type UploaderFn = (
+  file: File,
+  opts?: { onProgress?: (pct: number) => void; signal?: AbortSignal }
+) => Promise<UploaderReturn>;
+
 type Props = {
   value: UImage[];
   onChange: (next: UImage[]) => void;
   max?: number; // default 8
+
+  /** Opción 1: inyecta un uploader de dominio (ej. product/category/avatar) */
+  uploader?: UploaderFn;
+
+  /** (Compat) Alias del prop anterior usado en algunos sitios */
+  onUpload?: UploaderFn;
+
+  /** Opción 2: si NO pasas `uploader`, el componente sube directo usando estos hints */
+  alias?: "products" | "avatars" | "categories" | "root";
+  folder?: string;
+  resourceType?: "auto" | "image" | "video" | "raw";
+
+  /** Validaciones */
+  maxBytes?: number;
+  acceptMime?: string[];
 };
 
 export default function ImageUploader({
   value = [],
   onChange,
   max = 8,
+  uploader,
+  onUpload,
+  alias = "root",
+  folder,
+  resourceType = "auto",
+  maxBytes = 8 * 1024 * 1024,
+  acceptMime = ["image/jpeg", "image/png", "image/webp"],
 }: Props) {
   // ───────────────────────────────── UI state
   const inputRef = useRef<HTMLInputElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string>("");
@@ -44,6 +76,13 @@ export default function ImageUploader({
   const [dragTo, setDragTo] = useState<number | null>(null);
 
   const canAdd = value.length < max;
+
+  // Limpia/cancela subidas al desmontar
+  useEffect(() => {
+    return () => {
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, []);
 
   // ───────────────────────────────── Helpers
   const sortByPosition = useCallback(
@@ -105,7 +144,7 @@ export default function ImageUploader({
       // borrar en cloudinary si aplica (no bloqueante)
       if (removed?.publicId) {
         try {
-          await adminUploadDelete(removed.publicId);
+          await deleteCloudinary(removed.publicId);
         } catch {
           /* noop */
         }
@@ -115,12 +154,36 @@ export default function ImageUploader({
   );
 
   // ───────────────────────────────── Uploads
+  // Default uploader que respeta alias/folder/resourceType si NO nos pasan `uploader`/`onUpload`.
+  const defaultUploader: UploaderFn = useCallback(
+    async (file, opts) => {
+      const { url, publicId } = await uploadToCloudinary(file, {
+        alias,
+        folder, // p.ej: "products/mi-slug" o solo "mi-slug" con alias="products"
+        resourceType,
+        acceptMime,
+        maxBytes,
+        onProgress: opts?.onProgress,
+        signal: opts?.signal,
+      });
+      return { url, publicId };
+    },
+    [alias, folder, resourceType, acceptMime, maxBytes]
+  );
+
+  // Back-compat: si alguien pasó `onUpload`, úsalo. Si no, `uploader`. Si no, default.
+  const useUploader: UploaderFn = onUpload ?? uploader ?? defaultUploader;
+
   const handleFiles = useCallback(
     async (files: FileList | null) => {
       if (!files || !files.length || !canAdd) return;
 
       const remaining = Math.max(0, max - value.length);
       const list = Array.from(files).slice(0, remaining);
+
+      // Cancela subida anterior si había
+      if (abortRef.current) abortRef.current.abort();
+      abortRef.current = new AbortController();
 
       setBusy(true);
       setProgress(`Preparando…`);
@@ -131,36 +194,43 @@ export default function ImageUploader({
         for (const file of list) {
           i += 1;
           setProgress(`Subiendo ${i}/${list.length}…`);
-          const { url, publicId } = await uploadToCloudinary(file);
+          const { url, publicId } = await useUploader(file, {
+            onProgress: (pct) =>
+              setProgress(`Subiendo ${i}/${list.length}… ${pct}%`),
+            signal: abortRef.current?.signal,
+          });
           uploaded.push({ url, publicId });
         }
 
         const next = limitMax(dedup(normalize([...value, ...uploaded])));
         onChange(next);
       } catch (err) {
-        // eslint-disable-next-line no-alert
-        alert((err as Error)?.message || "No se pudo subir");
+        if ((err as Error)?.message !== "Upload aborted") {
+          alert((err as Error)?.message || "No se pudo subir");
+        }
       } finally {
         setBusy(false);
         setProgress("");
         if (inputRef.current) inputRef.current.value = "";
       }
     },
-    [value, onChange, max, canAdd, dedup, normalize, limitMax]
+    [value, onChange, max, canAdd, dedup, normalize, limitMax, useUploader]
   );
 
   const addByUrl = useCallback(() => {
     const u = url.trim();
     if (!u) return;
     try {
-      // validación simple
       new URL(u);
     } catch {
-      // eslint-disable-next-line no-alert
       alert("URL inválida");
       return;
     }
-    const next = limitMax(dedup(normalize([...value, { url: u }])));
+
+    const maybePid = isCloudinaryUrl(u) ? extractPublicIdFromUrl(u) : null;
+    const next = limitMax(
+      dedup(normalize([...value, { url: u, publicId: maybePid || undefined }]))
+    );
     onChange(next);
     setUrl("");
   }, [url, value, onChange, dedup, normalize, limitMax]);
@@ -244,7 +314,7 @@ export default function ImageUploader({
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          accept={acceptMime.join(",")}
           multiple
           className="hidden"
           onChange={(e) => handleFiles(e.currentTarget.files)}
@@ -288,7 +358,6 @@ export default function ImageUploader({
 
       {/* Dropzone */}
       <div
-        ref={dropRef}
         onDragEnter={onDropZoneEnter}
         onDragOver={onDropZoneDrag}
         onDragLeave={onDropZoneLeave}

@@ -1,6 +1,7 @@
-// src/features/account/api/profile.ts
+// frontend/src/features/account/api/profile.ts
 import { api } from "@/lib/api";
-import { uploadToCloudinary } from "@/lib/cloudinary";
+// ❌ import { uploadToCloudinary } from "@/lib/cloudinary";
+import { uploadAvatar } from "@/lib/cloudinary";
 
 export type Me = {
   id: string;
@@ -13,7 +14,6 @@ export type Me = {
   twoFactorEnabled?: boolean;
 };
 
-// ── Perfil ───────────────────────────────────────────────────────────────────
 export async function getMe(): Promise<Me> {
   const { data } = await api.get<Me>("/me");
   return data;
@@ -27,16 +27,11 @@ export async function updateMe(patch: UpdateMePayload): Promise<Me> {
   return data;
 }
 
-/**
- * Sube el avatar a Cloudinary con firma del backend y devuelve { url, publicId }.
- * Luego podrás persistir ambos campos con `updateMe({ avatarUrl, avatarPublicId })`.
- */
+/** Sube el avatar firmado por el backend y devuelve { url, publicId }. */
 export async function uploadAvatarToCloudinary(
-  file: File
+  file: File,
+  userId?: string // pásame el id si quieres publicId determinístico
 ): Promise<{ url: string; publicId: string }> {
-  // Puedes cambiar la carpeta si quieres (coincide con el backend)
-  const { url, publicId } = await uploadToCloudinary(file, {
-    folder: "tienda/avatars",
-  });
+  const { url, publicId } = await uploadAvatar(file, userId);
   return { url, publicId };
 }

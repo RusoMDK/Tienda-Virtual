@@ -1,7 +1,13 @@
-// src/lib/cloudinary.ts
+// frontend/src/lib/cloudinary.ts
 export {
-  uploadToCloudinary,
   getSignature,
+  uploadToCloudinary,
+  uploadAvatar,
+  uploadProductImage,
+  uploadCategoryImage,
+  deleteCloudinary,
   isCloudinaryUrl,
+  extractPublicIdFromUrl,
   type CloudinarySignature,
+  type SignatureParams,
 } from "@/features/uploads/cloudinary";

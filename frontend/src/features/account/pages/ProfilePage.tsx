@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { getMe, updateMe, type Me } from "@/features/account/api/profile";
-import { uploadToCloudinary } from "@/lib/cloudinary";
+import { uploadAvatar } from "@/lib/cloudinary";
 import AvatarCropperDialog from "@/features/account/components/AvatarCropperDialog";
 import PhoneInput from "@/components/PhoneInput";
 
@@ -183,11 +183,8 @@ export default function ProfilePage() {
 
   const avatarMut = useMutation({
     mutationFn: async (file: File) => {
-      const publicId = me.data?.id ? `users/${me.data.id}` : undefined;
-      const { url, publicId: pid } = await uploadToCloudinary(file, {
-        folder: "tienda/avatars",
-        publicId,
-      });
+      // ➜ usa alias "avatars" y nombre fijo avatar_<userId>; overwrite + invalidate ON
+      const { url, publicId: pid } = await uploadAvatar(file, me.data?.id);
       const updated = await updateMe({
         avatarUrl: url,
         avatarPublicId: pid,
