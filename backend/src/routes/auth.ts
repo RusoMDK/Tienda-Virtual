@@ -1,9 +1,10 @@
-// src/routes/auth.ts
+// backend/src/routes/auth.ts
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { env } from "../env.js";
 import { authenticator } from "otplib";
 import argon2 from "argon2";
+import { newTokenString } from "../utils/tokens.js";
 
 /** TTL parser seguro: "10s", "15m", "2h", "7d" (case-insensitive).
  *  Si viene vacío/undefined o formato inválido → fallback 7d.
@@ -36,26 +37,47 @@ const LoginSchema = z.object({
 });
 
 export default async function authRoutes(app: FastifyInstance) {
-  // Util común: set-cookie de refresh + persistencia
+  // ---------------------------------------------
+  // Helper: crear refresh + setear cookie (opaco)
+  // ---------------------------------------------
   async function setRefreshCookieAndPersist(
     reply: any,
     userId: string,
     role: string
   ) {
     const accessToken = app.signAccess({ sub: userId, role });
-    const refreshToken = app.signRefresh({ sub: userId, role });
 
     const refreshMs = parseTtlMs(env.JWT_REFRESH_TTL);
+    const expiresAt = new Date(Date.now() + refreshMs);
 
-    await app.prisma.refreshToken.create({
-      data: {
-        userId,
-        token: refreshToken,
-        expiresAt: new Date(Date.now() + refreshMs),
-      },
-    });
+    // Generación aleatoria + reintentos por si choca unique(token)
+    let createdToken: string | null = null;
+    for (let i = 0; i < 3; i++) {
+      const candidate = newTokenString();
+      try {
+        await app.prisma.refreshToken.create({
+          data: {
+            userId,
+            token: candidate,
+            expiresAt,
+          },
+        });
+        createdToken = candidate;
+        break;
+      } catch (e: any) {
+        if (e?.code === "P2002" && e?.meta?.target?.includes?.("token")) {
+          continue; // intenta otro token
+        }
+        throw e;
+      }
+    }
 
-    reply.setCookie("refresh_token", refreshToken, {
+    if (!createdToken) {
+      reply.header("Cache-Control", "no-store");
+      return reply.unauthorized();
+    }
+
+    reply.setCookie("refresh_token", createdToken, {
       httpOnly: true,
       secure: env.COOKIE_SECURE,
       sameSite: env.COOKIE_SAME_SITE as any,
@@ -64,7 +86,6 @@ export default async function authRoutes(app: FastifyInstance) {
       maxAge: Math.floor(refreshMs / 1000),
     });
 
-    // evita cachear respuestas de auth
     reply.header("Cache-Control", "no-store");
     return accessToken;
   }
@@ -133,7 +154,7 @@ export default async function authRoutes(app: FastifyInstance) {
           user.role
         );
 
-        // (1) Mejora: devolver también el usuario “seguro” para el frontend
+        // (1) Devolver también el usuario “seguro” para el frontend
         const userSafe = {
           id: user.id,
           email: user.email,
@@ -164,38 +185,32 @@ export default async function authRoutes(app: FastifyInstance) {
           return reply.unauthorized();
         }
 
-        // (3) Mejora: verificar issuer/audience también aquí
-        try {
-          await app.jwt.verify(token, {
-            secret: env.JWT_REFRESH_SECRET,
-            issuer: "tienda-api",
-            audience: "web",
-          });
-        } catch {
-          reply.header("Cache-Control", "no-store");
-          return reply.unauthorized();
-        }
-
+        // Refresh tokens ahora son opacos: se validan solo contra BD.
         const stored = await app.prisma.refreshToken.findUnique({
           where: { token },
         });
 
         if (!stored) {
-          // Reutilización detectada → revocar todos los refresh del usuario
+          // Reutilización detectada o token inválido → opcionalmente revocar todos
+          // Si el token antiguamente era JWT, intentamos extraer sub para "limpiar".
           try {
-            const decoded: any = app.jwt.decode(token);
-            const sub = decoded?.sub as string | undefined;
-            if (sub) {
-              await app.prisma.refreshToken.updateMany({
-                where: { userId: sub, revoked: false },
-                data: { revoked: true },
-              });
-              req.log.warn(
-                { sub },
-                "Refresh reuse detected → revoked all for user"
-              );
+            if (token.includes(".")) {
+              const decoded: any = app.jwt.decode(token);
+              const sub = decoded?.sub as string | undefined;
+              if (sub) {
+                await app.prisma.refreshToken.updateMany({
+                  where: { userId: sub, revoked: false },
+                  data: { revoked: true },
+                });
+                req.log.warn(
+                  { sub },
+                  "Refresh reuse detected (opaque miss + JWT fallback) → revoked all"
+                );
+              }
             }
-          } catch {}
+          } catch {
+            // ignoramos
+          }
           reply.header("Cache-Control", "no-store");
           return reply.unauthorized();
         }
@@ -213,26 +228,45 @@ export default async function authRoutes(app: FastifyInstance) {
           return reply.unauthorized();
         }
 
-        // Rotación segura
+        // Rotación segura: revoca el viejo
         await app.prisma.refreshToken.update({
           where: { token },
           data: { revoked: true },
         });
 
-        const accessToken = app.signAccess({ sub: user.id, role: user.role });
-        const newRefresh = app.signRefresh({ sub: user.id, role: user.role });
-
+        // Crea uno nuevo (opaco) con reintentos anti-colisión
         const refreshMs = parseTtlMs(env.JWT_REFRESH_TTL);
+        const expiresAt = new Date(Date.now() + refreshMs);
 
-        await app.prisma.refreshToken.create({
-          data: {
-            userId: user.id,
-            token: newRefresh,
-            expiresAt: new Date(Date.now() + refreshMs),
-          },
-        });
+        let createdToken: string | null = null;
+        for (let i = 0; i < 3; i++) {
+          const candidate = newTokenString();
+          try {
+            await app.prisma.refreshToken.create({
+              data: {
+                userId: user.id,
+                token: candidate,
+                expiresAt,
+              },
+            });
+            createdToken = candidate;
+            break;
+          } catch (e: any) {
+            if (e?.code === "P2002" && e?.meta?.target?.includes?.("token")) {
+              continue; // intenta otro
+            }
+            throw e;
+          }
+        }
 
-        reply.setCookie("refresh_token", newRefresh, {
+        if (!createdToken) {
+          reply.header("Cache-Control", "no-store");
+          return reply.unauthorized();
+        }
+
+        const accessToken = app.signAccess({ sub: user.id, role: user.role });
+
+        reply.setCookie("refresh_token", createdToken, {
           httpOnly: true,
           secure: env.COOKIE_SECURE,
           sameSite: env.COOKIE_SAME_SITE as any,
