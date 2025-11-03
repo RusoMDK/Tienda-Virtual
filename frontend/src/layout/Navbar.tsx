@@ -138,11 +138,11 @@ export default function Navbar() {
   const items = useCartStore((s) => s.items);
   const count = useMemo(() => items.reduce((a, b) => a + b.qty, 0), [items]);
   const totalCentsUSD = useMemo(
-    () => items.reduce((a, b) => a + b.price * b.qty, 0), // base USD en el carrito
+    () => items.reduce((a, b) => a + b.price * b.qty, 0),
     [items]
   );
 
-  // Currency helpers (para el total en MN si CUP)
+  // Currency helpers
   const { currency, convert, fmt } = useCurrency();
   const totalCentsActive = useMemo(
     () => convert(totalCentsUSD, "USD", currency),
@@ -163,6 +163,14 @@ export default function Navbar() {
 
   // Auth
   const { user, logout } = useAuth();
+
+  // Control de fallback de avatar
+  const [avatarError, setAvatarError] = useState(false);
+  const avatarUrl = (user as any)?.avatarUrl as string | undefined;
+  useEffect(() => {
+    // si el usuario cambió de avatar, reintenta mostrarlo
+    setAvatarError(false);
+  }, [avatarUrl]);
 
   // Categorías
   const {
@@ -190,6 +198,11 @@ export default function Navbar() {
     next.set("page", "1");
     nav(`/?${next.toString()}`);
   }
+
+  const userInitials = user
+    ? initials(user.name as any, user.email as any)
+    : "U";
+  const showAvatar = !!(avatarUrl && !avatarError);
 
   return (
     <header
@@ -323,7 +336,6 @@ export default function Navbar() {
             </IconButton>
             <div className="hidden md:flex flex-col leading-tight text-sm">
               <span className="text-[rgb(var(--fg-rgb)/0.7)]">Total</span>
-              {/* Si CUP → “NNN.NN MN”; en otras monedas delega en <Price> */}
               <span className="font-semibold">
                 {currency === "CUP" ? (
                   totalText
@@ -346,21 +358,28 @@ export default function Navbar() {
               trigger={
                 <button
                   aria-label="Perfil"
-                  title={user.email}
+                  title={user.name || user.email}
                   className="
                     inline-flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold
                     border bg-[rgb(var(--card-rgb))] border-[rgb(var(--border-rgb))]
+                    overflow-hidden
                   "
                 >
-                  {user.name ? (
-                    <span>{initials(user.name, user.email)}</span>
+                  {showAvatar ? (
+                    <img
+                      src={avatarUrl}
+                      alt={user.name || user.email}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      onError={() => setAvatarError(true)}
+                    />
                   ) : (
-                    <UserIcon size={16} className="opacity-80" />
+                    <span className="select-none">{userInitials}</span>
                   )}
                 </button>
               }
               items={[
-                // 🔓 Acceso para staff
                 ...(user.role === "ADMIN"
                   ? [
                       { label: "Admin", onSelect: () => nav("/admin") },
