@@ -3,6 +3,8 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
 import "@/styles/theme.css";
+import "leaflet/dist/leaflet.css";
+import "./lib/leafletIcons"; // 👈 aquí
 import Providers from "./app/providers";
 import AppRouter from "./routes/AppRouter";
 

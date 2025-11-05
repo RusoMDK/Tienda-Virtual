@@ -1,4 +1,3 @@
-// src/layout/Footer.tsx
 import Container from "./Container";
 import { Link } from "react-router-dom";
 import { useState } from "react";
@@ -20,7 +19,6 @@ export default function Footer() {
       toast({ title: "Correo no válido", variant: "error" });
       return;
     }
-    // Si tienes endpoint real, cámbialo por api.post("/newsletter", { email })
     toast({
       title: "¡Suscripción exitosa!",
       description: "Te enviaremos novedades y ofertas.",
@@ -37,13 +35,14 @@ export default function Footer() {
     "text-sm opacity-80 hover:opacity-100 transition hover:underline underline-offset-4 decoration-[var(--ring)]";
 
   return (
-    <footer className="mt-10 border-t border-[var(--border)] bg-[color-mix(in_oklab, var(--card) 92%, transparent)]">
-      <Container className="py-10">
+    <footer className="mt-10 border-t border-[rgb(var(--border-rgb))] bg-[color-mix(in_oklab,var(--card) 92%,transparent)]">
+      {/* Footer full-width tipo Amazon */}
+      <Container className="!max-w-none px-4 sm:px-6 lg:px-10 py-10">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Brand */}
           <div className="space-y-3">
             <Link to="/" className="inline-block">
-              <span className="text-xl font-extrabold bg-gradient-to-r from-[var(--ring)] to-[var(--text)] bg-clip-text text-transparent">
+              <span className="text-xl font-extrabold bg-gradient-to-r from-[var(--brand-start)] to-[var(--brand-end)] bg-clip-text text-transparent">
                 tienda
               </span>
             </Link>
@@ -54,13 +53,13 @@ export default function Footer() {
 
             {/* “Sellos”/confianza */}
             <ul className="flex flex-wrap gap-2 text-[11px] opacity-80">
-              <li className="rounded-lg border border-[var(--border)] px-2 py-1 bg-[var(--surface-1)]">
+              <li className="rounded-lg border border-[rgb(var(--border-rgb))] px-2 py-1 bg-[rgb(var(--card-2-rgb))]">
                 Stripe Secure
               </li>
-              <li className="rounded-lg border border-[var(--border)] px-2 py-1 bg-[var(--surface-1)]">
+              <li className="rounded-lg border border-[rgb(var(--border-rgb))] px-2 py-1 bg-[rgb(var(--card-2-rgb))]">
                 SSL
               </li>
-              <li className="rounded-lg border border-[var(--border)] px-2 py-1 bg-[var(--surface-1)]">
+              <li className="rounded-lg border border-[rgb(var(--border-rgb))] px-2 py-1 bg-[rgb(var(--card-2-rgb))]">
                 Devolución 30 días
               </li>
             </ul>
@@ -146,7 +145,7 @@ export default function Footer() {
                 placeholder="tu@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="bg-[var(--surface-1)] border border-[var(--border)]"
+                className="bg-[rgb(var(--card-2-rgb))] border border-[rgb(var(--border-rgb))]"
                 autoComplete="email"
               />
               <Button type="submit" className="w-full">
@@ -154,7 +153,7 @@ export default function Footer() {
               </Button>
             </form>
 
-            {/* Social minimal (usa anchors externas si aún no hay páginas) */}
+            {/* Social minimal */}
             <div className="pt-1 flex items-center gap-3 text-sm opacity-80">
               <a
                 href="#"
@@ -182,7 +181,7 @@ export default function Footer() {
         </div>
 
         {/* Barra inferior */}
-        <div className="mt-8 pt-6 border-t border-[var(--border)] flex flex-col md:flex-row items-center justify-between gap-3 text-sm opacity-80">
+        <div className="mt-8 pt-6 border-t border-[rgb(var(--border-rgb))] flex flex-col md:flex-row items-center justify-between gap-3 text-sm opacity-80">
           <div>© {year} tienda. Todos los derechos reservados.</div>
           <div className="flex items-center gap-4">
             <Link to="/legal/terms" className={linkCls}>

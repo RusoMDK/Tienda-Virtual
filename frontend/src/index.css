@@ -1,21 +1,77 @@
-/* src/index.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* Base */
 @layer base {
-  html, body, #root { height: 100%; }
-  ::selection { background-color: rgb(var(--primary-rgb) / 0.28); }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-bg text-fg antialiased;
+  }
+
+  ::selection {
+    background-color: rgb(var(--primary-rgb) / 0.28);
+  }
 }
 
 /* Utilities propias */
 @layer utilities {
   /* Ocultar scrollbar */
-  .no-scrollbar::-webkit-scrollbar { display: none; }
-  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 
   /* Auth transitions (usan keyframes definidos en theme.css) */
-  .anim-in-left  { animation: authInLeft  420ms var(--ease-auth) both; }
-  .anim-in-right { animation: authInRight 420ms var(--ease-auth) both; }
+  .anim-in-left {
+    animation: authInLeft 420ms var(--ease-auth) both;
+  }
+  .anim-in-right {
+    animation: authInRight 420ms var(--ease-auth) both;
+  }
+}
+
+/* Marker flotante con avatar / iniciales */
+.user-marker-div-icon {
+  background: transparent;
+  border: none;
+}
+
+.user-marker {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 2px rgb(var(--bg-rgb)),
+    0 8px 18px rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: rgb(var(--bg-rgb));
+  background: radial-gradient(circle at 30% 30%,
+    rgb(var(--primary-rgb)),
+    rgb(var(--accent-rgb))
+  );
+}
+
+.user-marker img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-marker--initials {
+  letter-spacing: 0.03em;
 }

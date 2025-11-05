@@ -1,4 +1,4 @@
-// features/admin/layout/AdminLayout.tsx
+// src/features/admin/layout/AdminLayout.tsx
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useMemo } from "react";
 import Container from "@/layout/Container";
@@ -10,6 +10,8 @@ import {
   Users,
   Banknote,
   LifeBuoy,
+  LayoutTemplate,
+  Home as HomeIcon, // 👈 añade esto
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -23,6 +25,7 @@ export default function AdminLayout() {
   const title = useMemo(() => {
     const p = loc.pathname.replace(/\/+$/, "");
     if (p === "/admin" || p === "/admin/") return "Dashboard";
+    if (p.startsWith("/admin/home")) return "Inicio";
     if (p.startsWith("/admin/products")) return "Productos";
     if (p.startsWith("/admin/categories")) return "Categorías";
     if (p.startsWith("/admin/orders")) return "Órdenes";
@@ -58,6 +61,18 @@ export default function AdminLayout() {
               <BarChart3 size={16} />
               <span>Dashboard</span>
             </NavLink>
+
+            {/* Inicio (config del home público) */}
+            <NavLink
+              to="/admin/home"
+              className={({ isActive }) =>
+                `${linkCls} ${isActive ? active : ""}`
+              }
+            >
+              <LayoutTemplate size={16} />
+              <span>Inicio</span>
+            </NavLink>
+
             <NavLink
               to="/admin/products"
               className={({ isActive }) =>

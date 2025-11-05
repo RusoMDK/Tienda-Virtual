@@ -1,3 +1,4 @@
+// src/features/account/pages/AddressesPage.tsx
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   listAddresses,
@@ -10,13 +11,20 @@ import {
 import AddressForm, { type AddressFormValues } from "../components/AddressForm";
 import { Card, CardHeader, CardContent, Button, Badge } from "@/ui";
 import { useToast } from "@/ui";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import AddressMapPicker from "@/features/account/components/AddressMapPicker";
 
 function moneyAddr(a: Address) {
   return `${a.addressLine1}${a.addressLine2 ? `, ${a.addressLine2}` : ""}, ${
     a.city
   }${a.state ? `, ${a.state}` : ""} ${a.postalCode}, ${a.country}`;
 }
+
+type DraftLocation = {
+  lat: number;
+  lng: number;
+  label?: string;
+};
 
 export default function AddressesPage() {
   const qc = useQueryClient();
@@ -28,11 +36,38 @@ export default function AddressesPage() {
 
   const [editing, setEditing] = useState<Address | null>(null);
 
+  // Ubicación seleccionada en el mapa (para el formulario actual)
+  const [draftLocation, setDraftLocation] = useState<DraftLocation | null>(
+    null
+  );
+
+  // Si estás editando una dirección que ya tiene lat/lng, precarga el mapa
+  useEffect(() => {
+    if (editing && (editing as any).lat && (editing as any).lng) {
+      setDraftLocation({
+        lat: (editing as any).lat,
+        lng: (editing as any).lng,
+        label: (editing as any).mapLabel,
+      });
+    } else {
+      setDraftLocation(null);
+    }
+  }, [editing]);
+
   const createMut = useMutation({
-    mutationFn: (v: AddressFormValues) => createAddress(v),
+    mutationFn: (v: AddressFormValues) => {
+      const payload: any = { ...v };
+      if (draftLocation) {
+        payload.lat = draftLocation.lat;
+        payload.lng = draftLocation.lng;
+        payload.mapLabel = draftLocation.label;
+      }
+      return createAddress(payload);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["addresses"] });
       toast({ title: "Dirección guardada", variant: "success" });
+      setDraftLocation(null);
     },
     onError: () => toast({ title: "No se pudo guardar", variant: "error" }),
   });
@@ -44,16 +79,25 @@ export default function AddressesPage() {
     }: {
       id: string;
       data: Partial<AddressFormValues>;
-    }) => updateAddress(id, data),
+    }) => {
+      const payload: any = { ...data };
+      if (draftLocation) {
+        payload.lat = draftLocation.lat;
+        payload.lng = draftLocation.lng;
+        payload.mapLabel = draftLocation.label;
+      }
+      return updateAddress(id, payload);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["addresses"] });
       setEditing(null);
+      setDraftLocation(null);
       toast({ title: "Dirección actualizada", variant: "success" });
     },
     onError: () => toast({ title: "No se pudo actualizar", variant: "error" }),
   });
 
-  // 🔧 Update optimista para por-defecto (corrige el “toca dos veces”)
+  // Update optimista para por-defecto
   const setDefault = useMutation({
     mutationFn: ({ id, type }: { id: string; type: "shipping" | "billing" }) =>
       setDefaultAddress(id, type),
@@ -119,6 +163,11 @@ export default function AddressesPage() {
                         Tel: {a.phone}
                       </div>
                     )}
+                    {(a as any).mapLabel && (
+                      <div className="text-[11px] opacity-60 mt-0.5">
+                        {String((a as any).mapLabel)}
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <Button
@@ -176,15 +225,21 @@ export default function AddressesPage() {
 
       <Card>
         <CardHeader className="pb-2 flex items-start justify-between">
-          <h2 className="font-semibold">
-            {editing ? "Editar dirección" : "Nueva dirección"}
-          </h2>
+          <div>
+            <h2 className="font-semibold">
+              {editing ? "Editar dirección" : "Nueva dirección"}
+            </h2>
+            <p className="text-xs opacity-70 mt-1 sm:hidden">
+              Los campos marcados con <span className="text-red-400">*</span>{" "}
+              son obligatorios.
+            </p>
+          </div>
           <p className="text-xs opacity-70 hidden sm:block">
             Los campos marcados con <span className="text-red-400">*</span> son
             obligatorios.
           </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <AddressForm
             initialValues={editing || { country: "CU" }} // Cuba por defecto
             submitting={createMut.isPending || updateMut.isPending}
@@ -195,6 +250,24 @@ export default function AddressesPage() {
               return createMut.mutate(v);
             }}
           />
+
+          {/* Mapa para seleccionar ubicación */}
+          <div className="pt-3 border-t border-[rgb(var(--border-rgb))] space-y-2">
+            <div>
+              <h3 className="text-sm font-semibold">
+                Ubicación en el mapa (opcional)
+              </h3>
+              <p className="text-xs opacity-70">
+                Usa el buscador, el botón de ubicación o haz clic en el mapa
+                para seleccionar dónde vives o el punto de recogida. Se guardará
+                junto con esta dirección.
+              </p>
+            </div>
+            <AddressMapPicker
+              value={draftLocation ?? undefined}
+              onChange={(pos) => setDraftLocation(pos)}
+            />
+          </div>
         </CardContent>
       </Card>
     </div>

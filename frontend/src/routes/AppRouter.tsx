@@ -31,9 +31,13 @@ import AdminUsersPage from "@/features/admin/pages/AdminUsersPage";
 import AdminProductImportPage from "@/features/admin/pages/AdminProductImportPage";
 import AdminFxPage from "@/features/admin/pages/AdminFxPage";
 import AdminSupportPage from "@/features/admin/pages/AdminSupportPage";
+import AdminHomePage from "@/features/admin/pages/AdminHomePage"; // 👈 tu página para secciones de home
 
 // Support (thread page)
 import SupportConversationPage from "@/features/support/pages/SupportConversationPage";
+
+// Home (landing)
+import HomePage from "@/features/home/pages/HomePage";
 
 // Públicas
 import CatalogPage from "@/features/products/pages/CatalogPage";
@@ -44,6 +48,8 @@ import RegisterPage from "@/features/auth/pages/RegisterPage";
 import LegalTermsPage from "@/features/legal/pages/LegalTermsPage";
 import LegalPrivacyPage from "@/features/legal/pages/LegalPrivacyPage";
 import ContactPage from "@/features/legal/pages/ContactPage";
+// ✅ Help (centro de ayuda público)
+import HelpPage from "@/features/Help/pages/HelpPage";
 
 // Checkout
 import CheckoutPage from "@/features/checkout/pages/CheckoutPage";
@@ -182,7 +188,7 @@ function NotFoundPage() {
       <div className="rounded-2xl border border-zinc-800 bg-[var(--card)] p-6 text-center">
         <h2 className="text-xl font-semibold">No encontrado</h2>
         <p className="opacity-70 text-sm">La ruta que buscas no existe.</p>
-        <Link className="underline text-sm mt-3 inline-block" to="/">
+        <Link className="underline text-sm mt-3 inline-block" to="/tienda">
           Volver al catálogo
         </Link>
       </div>
@@ -210,8 +216,13 @@ export default function AppRouter() {
         <ErrorBoundary>
           <Suspense fallback={<FullscreenSpinner />}>
             <Routes>
+              {/* Home pública (landing tipo Amazon) */}
+              <Route path="/" element={<HomePage />} />
+
+              {/* Catálogo / tienda */}
+              <Route path="/tienda" element={<CatalogPage />} />
+
               {/* Públicas */}
-              <Route path="/" element={<CatalogPage />} />
               <Route path="/product/:slug" element={<ProductDetailPage />} />
               <Route path="/cart" element={<CartPage />} />
               <Route
@@ -231,10 +242,11 @@ export default function AppRouter() {
                 }
               />
 
-              {/* Legales y contacto (PÚBLICAS) */}
+              {/* Legales, contacto y ayuda (PÚBLICAS) */}
               <Route path="/legal/terms" element={<LegalTermsPage />} />
               <Route path="/legal/privacy" element={<LegalPrivacyPage />} />
               <Route path="/contact" element={<ContactPage />} />
+              <Route path="/help" element={<HelpPage />} />
 
               {/* Protegidas */}
               <Route
@@ -288,6 +300,9 @@ export default function AppRouter() {
                 {/* /admin → dashboard */}
                 <Route index element={<AdminDashboardPage />} />
 
+                {/* /admin/home → gestión de secciones del home */}
+                <Route path="home" element={<AdminHomePage />} />
+
                 {/* /admin/products */}
                 <Route path="products" element={<AdminProductsPage />} />
                 <Route
@@ -334,7 +349,7 @@ export default function AppRouter() {
                 <Route path=":id" element={<SupportConversationPage />} />
               </Route>
 
-              {/* Support legado bajo /admin/support (lo mantenemos como alias) */}
+              {/* Support legado bajo /admin/support (alias) */}
               <Route
                 path="/admin/support"
                 element={
