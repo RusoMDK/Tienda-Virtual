@@ -109,8 +109,16 @@ model Address {
   state         String?
   postalCode    String
   country       String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+
+  // 🌍 Geolocalización / mapa
+  lat         Float?
+  lng         Float?
+  mapLabel    String?  // texto bonito de la ubicación
+  geoProvider String?  // p.ej. "geoapify"
+  geoPlaceId  String?  // id del proveedor
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   isDefaultShipping Boolean @default(false)
   isDefaultBilling  Boolean @default(false)
@@ -205,6 +213,39 @@ model ProductImage {
   @@unique([productId, position])
   @@index([productId, isPrimary])
 }
+
+/**
+ * =========================
+ * HOME / LANDING
+ * =========================
+ * Secciones configurables del home (hero, grids, etc.).
+ */
+enum HomeSectionType {
+  HERO
+  PRODUCT_GRID
+  PRODUCT_STRIP
+  CATEGORY_STRIP
+  BANNER
+  TEXT_BLOCK
+}
+
+model HomeSection {
+  id        String           @id @default(cuid())
+  slug      String           @unique           // identificador estable
+  type      HomeSectionType                      // tipo de sección
+  title     String?                              // título visible
+  subtitle  String?                              // subtítulo opcional
+  config    Json?                                // configuración (ej. modo, categoría, límite)
+  layout    Json?                                // ajustes de layout/estilo
+  active    Boolean          @default(true)      // visible en el home
+  position  Int              @default(0)         // orden en el home
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@map("home_sections")                          // usa la misma tabla fisica
+  @@index([active, position, createdAt])
+}
+
 
 /**
  * =========================
@@ -576,7 +617,7 @@ model Conversation {
   firstResponseSlaAt    DateTime?   // deadline 1ª respuesta
   resolutionSlaAt       DateTime?   // deadline resolución
 
-  // LEGACY opcional (si venías usando estos; puedes borrarlos cuando migres totalmente)
+  // LEGACY opcional
   // firstAgentResponseAt  DateTime?
   // slaTargetAt           DateTime?
   // slaBreached           Boolean?

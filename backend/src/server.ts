@@ -27,6 +27,8 @@ import cloudinaryRoutes from "./routes/cloudinary";
 import meOrdersRoutes from "./routes/me.orders";
 import twoFARoutes from "./routes/2fa";
 import geoPublicRoutes from "./routes/geo.public";
+import homeRoutes from "./routes/home";
+import mapRoutes from "./routes/mapRoutes";
 
 // 💬 Support (nuevo)
 import supportRoutes from "./routes/support";
@@ -118,6 +120,9 @@ await app.register(addressesRoutes);
 await app.register(imageProxy);
 await app.register(meOrdersRoutes);
 await app.register(twoFARoutes);
+await app.register(homeRoutes);
+await app.register(mapRoutes, { prefix: "/maps" });
+// ...
 
 // 💱 FX público: /fx/*
 await app.register(fxPublicRoutes, { prefix: "/fx" });
