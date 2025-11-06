@@ -1,7 +1,12 @@
 // src/routes/admin.ts
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { Role, InventoryReason } from "@prisma/client";
+import {
+  Role,
+  InventoryReason,
+  ProductCondition,
+  ConditionGrade,
+} from "@prisma/client";
 import { requireAdmin, requireRole } from "../utils/rbac.js";
 import { cloudinary } from "../lib/cloudinary.js";
 
@@ -40,8 +45,7 @@ const ImageInput = z.object({
 });
 
 // ──────────────────────────────────────────────────────────────
-// PASO 1) Helper para normalizar imágenes (anti-choques de posición,
-//         dedup por publicId/url, reindex 0..N-1, una sola isPrimary)
+// Helper para normalizar imágenes (dedup, reindex, isPrimary)
 // ──────────────────────────────────────────────────────────────
 type ImgInput = string | z.infer<typeof ImageInput>;
 
@@ -52,7 +56,6 @@ function normalizeImages(
 ) {
   if (!imgs?.length) return [];
 
-  // 1) Uniformar a shape {url, publicId, position}
   const raw = imgs.map((img, idx) =>
     typeof img === "string"
       ? { url: img, publicId: "", position: idx }
@@ -63,7 +66,6 @@ function normalizeImages(
         }
   );
 
-  // 2) Dedup: primero por publicId si existe; si no, por url
   const seen = new Set<string>();
   const dedup = raw.filter((r) => {
     const key = (
@@ -74,10 +76,8 @@ function normalizeImages(
     return true;
   });
 
-  // 3) Orden estable y reindex estricto
   dedup.sort((a, b) => a.position - b.position);
 
-  // 4) Construir filas para createMany: 0..N-1, sólo una primaria
   return dedup.map((r, i) => {
     const row: any = {
       productId,
@@ -85,9 +85,7 @@ function normalizeImages(
       position: i,
       isPrimary: i === 0,
     };
-    // Evitar conflictos con unique(publicId): sólo setear si viene
     if (r.publicId) row.publicId = r.publicId;
-    // Alt opcional si tu modelo lo soporta
     if (productName) row.alt = `${productName} (${i + 1})`;
     return row;
   });
@@ -95,7 +93,6 @@ function normalizeImages(
 
 // ──────────────────────────────────────────────────────────────
 export default async function adminRoutes(app: FastifyInstance) {
-  // 🚨 authenticate → guard
   const guard = { preHandler: [app.authenticate, requireAdmin] };
 
   // =========================== Dashboard summary ===========================
@@ -111,7 +108,6 @@ export default async function adminRoutes(app: FastifyInstance) {
   });
 
   // =========================== Uploads (Cloudinary) ===========================
-  // Firma para "direct upload" (acepta folder opcional)
   app.post("/admin/uploads/signature", guard, async (req, reply) => {
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
     const apiKey = process.env.CLOUDINARY_API_KEY;
@@ -138,7 +134,6 @@ export default async function adminRoutes(app: FastifyInstance) {
     return { cloudName, apiKey, timestamp, folder, signature };
   });
 
-  // Borrado seguro por publicId
   app.post("/admin/uploads/delete", guard, async (req, reply) => {
     const { publicId } = z
       .object({ publicId: z.string().min(1) })
@@ -150,13 +145,12 @@ export default async function adminRoutes(app: FastifyInstance) {
       if (res.result !== "ok" && res.result !== "not found") {
         (req as any).log?.warn?.({ res }, "Cloudinary destroy no-ok");
       }
-      // Limpieza en DB si guardas publicId en ProductImage
       try {
         await (app.prisma as any).productImage.deleteMany({
           where: { publicId },
         });
       } catch {
-        // si no hay tabla ProductImage → noop
+        // sin tabla ProductImage → noop
       }
       return { ok: true };
     } catch (err) {
@@ -170,7 +164,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20),
     q: z.string().trim().optional(),
-    cat: z.string().trim().optional(), // slug del padre o subcat
+    cat: z.string().trim().optional(), // slug padre o hijo
     status: z.enum(["active", "inactive", "all"]).default("all"),
     sort: z
       .enum([
@@ -198,6 +192,9 @@ export default async function adminRoutes(app: FastifyInstance) {
           { name: { contains: Q.q, mode: "insensitive" } },
           { description: { contains: Q.q, mode: "insensitive" } },
           { slug: { contains: Q.q, mode: "insensitive" } },
+          { brand: { contains: Q.q, mode: "insensitive" } },
+          { productType: { contains: Q.q, mode: "insensitive" } },
+          { modelName: { contains: Q.q, mode: "insensitive" } },
         ],
       });
     }
@@ -207,7 +204,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       AND.push({
         OR: [
           { category: { slug: Q.cat } },
-          { category: { parent: { slug: Q.cat } } }, // requiere relación parent en Category
+          { category: { parent: { slug: Q.cat } } },
         ],
       });
     }
@@ -234,10 +231,17 @@ export default async function adminRoutes(app: FastifyInstance) {
           active: true,
           createdAt: true,
           updatedAt: true,
+          brand: true,
+          productType: true,
+          modelName: true,
+          mainColor: true,
+          ratingAvg: true,
+          ratingCount: true,
+          condition: true,
+          warrantyMonths: true,
           category: {
             select: { id: true, name: true, slug: true, parentId: true },
           },
-          // images: { select: { url: true, publicId: true, position: true, isPrimary: true }, orderBy: { position: "asc" } },
         },
       }),
     ]);
@@ -255,7 +259,6 @@ export default async function adminRoutes(app: FastifyInstance) {
   app.get("/admin/products/:id", guard, async (req, reply) => {
     const { id } = z.object({ id: z.string().min(1) }).parse(req.params as any);
 
-    // 1) Traemos el producto + su categoría
     const base = await app.prisma.product.findUnique({
       where: { id },
       include: { category: { select: { name: true, slug: true } } },
@@ -263,7 +266,6 @@ export default async function adminRoutes(app: FastifyInstance) {
 
     if (!base) return reply.notFound("Producto no encontrado");
 
-    // 2) Intentamos traer imágenes si existe la tabla ProductImage
     let images: Array<{
       url: string;
       publicId?: string | null;
@@ -286,10 +288,9 @@ export default async function adminRoutes(app: FastifyInstance) {
       });
       images = Array.isArray(imgs) ? imgs : [];
     } catch {
-      // si no existe el modelo ProductImage en tu esquema, lo ignoramos
+      // sin ProductImage → noop
     }
 
-    // 3) Devolvemos shape amigable
     return {
       ...base,
       categoryName: base.category?.name ?? null,
@@ -298,15 +299,54 @@ export default async function adminRoutes(app: FastifyInstance) {
     };
   });
 
-  // =========================== Products (CREATE) ===========================
+  // =========================== Products (CREATE / UPDATE) ===========================
   const UpsertProduct = z.object({
     name: z.string().min(1).max(120),
+    slug: z.string().trim().optional(),
+    sku: z.string().trim().optional(),
     description: z.string().max(2000).default(""),
+
     price: z.number().int().nonnegative(), // cents
     currency: z.string().min(1).default("usd"),
     active: z.boolean().default(true),
+
     categorySlug: z.string().trim().optional(),
-    // Acepta array de strings o array de objetos ImageInput
+
+    // Marca / tipo / modelo
+    brand: z.string().trim().optional(),
+    productType: z.string().trim().optional(),
+    modelName: z.string().trim().optional(),
+
+    // Identificadores físicos
+    barcode: z.string().trim().optional(),
+    weightGrams: z.number().int().nonnegative().optional(),
+    widthMm: z.number().int().nonnegative().optional(),
+    heightMm: z.number().int().nonnegative().optional(),
+    lengthMm: z.number().int().nonnegative().optional(),
+
+    // Condición
+    condition: z.nativeEnum(ProductCondition).optional(),
+    conditionGrade: z.nativeEnum(ConditionGrade).optional(),
+    conditionNote: z.string().optional(),
+
+    // Atributos visuales
+    mainColor: z.string().trim().optional(),
+    colorVariants: z.array(z.string().trim().min(1)).optional(),
+
+    // Envío
+    homeDeliveryAvailable: z.boolean().optional(),
+    storePickupAvailable: z.boolean().optional(),
+
+    // Garantía
+    warrantyMonths: z.number().int().nonnegative().optional(),
+    warrantyType: z.string().optional(),
+    warrantyDescription: z.string().optional(),
+
+    // Tags / metadata
+    tags: z.array(z.string().trim().min(1)).optional(),
+    metadata: z.any().optional(),
+
+    // Imágenes
     images: z
       .union([z.array(z.string().url()), z.array(ImageInput)])
       .optional()
@@ -316,12 +356,12 @@ export default async function adminRoutes(app: FastifyInstance) {
   app.post("/admin/products", guard, async (req, reply) => {
     const body = UpsertProduct.parse(req.body);
 
-    // slug único
-    const base = slugify(body.name) || "producto";
-    let slug = base;
+    // slug único (permitimos override con body.slug)
+    const baseSlug = slugify(body.slug || body.name) || "producto";
+    let slug = baseSlug;
     let i = 1;
     while (await app.prisma.product.findUnique({ where: { slug } })) {
-      slug = `${base}-${++i}`;
+      slug = `${baseSlug}-${++i}`;
     }
 
     // categoría (opcional, por slug)
@@ -334,28 +374,64 @@ export default async function adminRoutes(app: FastifyInstance) {
       categoryConnect = { connect: { id: cat.id } };
     }
 
+    const normalizedTags = body.tags
+      ? Array.from(
+          new Set(body.tags.map((t) => t.trim()).filter((t) => t.length > 0))
+        )
+      : undefined;
+
+    const normalizedColorVariants = body.colorVariants
+      ? body.colorVariants.map((c) => c.trim()).filter((c) => c.length > 0)
+      : undefined;
+
     const created = await app.prisma.$transaction(async (tx) => {
       const p = await tx.product.create({
         data: {
           slug,
           name: body.name,
-          description: body.description,
+          description: body.description ?? "",
           price: body.price,
-          currency: body.currency,
+          currency: body.currency.toLowerCase(),
           active: body.active,
-          stock: 0, // arranca en 0 → usar ajuste de stock
+          stock: 0,
           ...(categoryConnect ? { category: categoryConnect } : {}),
+
+          brand: body.brand || undefined,
+          productType: body.productType || undefined,
+          modelName: body.modelName || undefined,
+
+          barcode: body.barcode || undefined,
+          weightGrams: body.weightGrams ?? null,
+          widthMm: body.widthMm ?? null,
+          heightMm: body.heightMm ?? null,
+          lengthMm: body.lengthMm ?? null,
+
+          condition: body.condition ?? ProductCondition.NEW,
+          conditionGrade: body.conditionGrade ?? null,
+          conditionNote: body.conditionNote || undefined,
+
+          mainColor: body.mainColor || undefined,
+          colorVariants: normalizedColorVariants ?? null,
+
+          homeDeliveryAvailable: body.homeDeliveryAvailable ?? true,
+          storePickupAvailable: body.storePickupAvailable ?? false,
+
+          warrantyMonths: body.warrantyMonths ?? null,
+          warrantyType: body.warrantyType || undefined,
+          warrantyDescription: body.warrantyDescription || undefined,
+
+          tags: normalizedTags ?? [],
+          metadata: body.metadata ?? null,
         },
       });
 
-      // PASO 2) Crear imágenes normalizadas
       const imgs = (body.images ?? []) as ImgInput[];
       if (imgs.length) {
         try {
           const rows = normalizeImages(imgs, p.id, body.name);
           await (tx as any).productImage.createMany({ data: rows });
         } catch {
-          // si no existe ProductImage, lo ignoramos
+          // sin ProductImage → noop
         }
       }
 
@@ -365,7 +441,6 @@ export default async function adminRoutes(app: FastifyInstance) {
     return reply.code(201).send(created);
   });
 
-  // =========================== Products (UPDATE parcial) ===========================
   app.patch("/admin/products/:id", guard, async (req, reply) => {
     const id = z
       .string()
@@ -374,12 +449,15 @@ export default async function adminRoutes(app: FastifyInstance) {
     const body = UpsertProduct.partial().parse(req.body);
 
     const data: any = {};
+
     if (body.name !== undefined) data.name = body.name;
     if (body.description !== undefined) data.description = body.description;
     if (body.price !== undefined) data.price = body.price;
-    if (body.currency !== undefined) data.currency = body.currency;
+    if (body.currency !== undefined)
+      data.currency = body.currency.toLowerCase();
     if (body.active !== undefined) data.active = body.active;
 
+    // categoría
     if ("categorySlug" in body) {
       if (!body.categorySlug) {
         data.category = { disconnect: true };
@@ -392,11 +470,82 @@ export default async function adminRoutes(app: FastifyInstance) {
       }
     }
 
+    // SKU / marca / tipo / modelo
+    if (body.sku !== undefined) {
+      data.sku = body.sku?.trim() || null;
+    }
+    if (body.brand !== undefined) {
+      data.brand = body.brand?.trim() || null;
+    }
+    if (body.productType !== undefined) {
+      data.productType = body.productType?.trim() || null;
+    }
+    if (body.modelName !== undefined) {
+      data.modelName = body.modelName?.trim() || null;
+    }
+
+    // Identificadores físicos
+    if (body.barcode !== undefined) {
+      data.barcode = body.barcode?.trim() || null;
+    }
+    if (body.weightGrams !== undefined) data.weightGrams = body.weightGrams;
+    if (body.widthMm !== undefined) data.widthMm = body.widthMm;
+    if (body.heightMm !== undefined) data.heightMm = body.heightMm;
+    if (body.lengthMm !== undefined) data.lengthMm = body.lengthMm;
+
+    // Condición
+    if (body.condition !== undefined) data.condition = body.condition;
+    if (body.conditionGrade !== undefined)
+      data.conditionGrade = body.conditionGrade;
+    if (body.conditionNote !== undefined) {
+      data.conditionNote = body.conditionNote?.trim() || null;
+    }
+
+    // Atributos visuales
+    if (body.mainColor !== undefined) {
+      data.mainColor = body.mainColor?.trim() || null;
+    }
+    if (body.colorVariants !== undefined) {
+      data.colorVariants =
+        body.colorVariants?.map((c) => c.trim()).filter((c) => c.length > 0) ??
+        null;
+    }
+
+    // Envío
+    if (body.homeDeliveryAvailable !== undefined) {
+      data.homeDeliveryAvailable = body.homeDeliveryAvailable;
+    }
+    if (body.storePickupAvailable !== undefined) {
+      data.storePickupAvailable = body.storePickupAvailable;
+    }
+
+    // Garantía
+    if (body.warrantyMonths !== undefined) {
+      data.warrantyMonths = body.warrantyMonths;
+    }
+    if (body.warrantyType !== undefined) {
+      data.warrantyType = body.warrantyType?.trim() || null;
+    }
+    if (body.warrantyDescription !== undefined) {
+      data.warrantyDescription = body.warrantyDescription?.trim() || null;
+    }
+
+    // Tags / metadata
+    if (body.tags !== undefined) {
+      data.tags = Array.from(
+        new Set(
+          (body.tags || []).map((t) => t.trim()).filter((t) => t.length > 0)
+        )
+      );
+    }
+    if (body.metadata !== undefined) {
+      data.metadata = body.metadata;
+    }
+
     try {
       const updated = await app.prisma.$transaction(async (tx) => {
         const p = await tx.product.update({ where: { id }, data });
 
-        // PASO 3) Reemplazar imágenes (delete + create) con normalización
         if (body.images) {
           try {
             await (tx as any).productImage.deleteMany({
@@ -408,7 +557,7 @@ export default async function adminRoutes(app: FastifyInstance) {
               await (tx as any).productImage.createMany({ data: rows });
             }
           } catch {
-            // sin tabla ProductImage → noop
+            // sin ProductImage → noop
           }
         }
 
@@ -443,7 +592,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       .number()
       .int()
       .refine((n) => n !== 0, "delta != 0"),
-    reason: z.string().optional(), // libre → se normaliza a InventoryReason
+    reason: z.string().optional(),
     note: z.string().max(200).optional(),
     orderId: z.string().optional(),
   });
@@ -470,7 +619,6 @@ export default async function adminRoutes(app: FastifyInstance) {
     await app.prisma.$transaction(async (tx) => {
       await tx.product.update({ where: { id }, data: { stock: next } });
 
-      // Registrar en el ledger
       try {
         await (tx as any).stockLedger.create({
           data: {
@@ -489,7 +637,6 @@ export default async function adminRoutes(app: FastifyInstance) {
     return { ok: true, stock: next };
   });
 
-  // Historial de stock (alias: stock-ledger y stock-movements)
   const LedgerQuery = z.object({
     limit: z.coerce.number().int().min(1).max(200).default(50),
   });
@@ -520,7 +667,6 @@ export default async function adminRoutes(app: FastifyInstance) {
         },
       });
     } catch {
-      // si no existe la tabla → lista vacía
       items = [];
     }
 
@@ -620,7 +766,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     page: z.coerce.number().min(1).default(1),
     pageSize: z.coerce.number().min(1).max(100).default(20),
     status: z.enum(["PENDING", "PAID", "CANCELLED", "FULFILLED"]).optional(),
-    q: z.string().optional(), // email
+    q: z.string().optional(),
   });
 
   app.get("/admin/orders", guard, async (req) => {
@@ -682,7 +828,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     }
   });
 
-  // Ejemplo de ruta que requiere CUSTOMER o ADMIN (aquí uso ADMIN explícito)
+  // =========================== Whoami (ADMIN) ===========================
   app.get(
     "/admin/whoami",
     { preHandler: [app.authenticate, requireRole(Role.ADMIN)] },
@@ -695,8 +841,7 @@ export default async function adminRoutes(app: FastifyInstance) {
   const UsersQuery = z.object({
     page: z.coerce.number().min(1).default(1),
     pageSize: z.coerce.number().min(1).max(100).default(20),
-    q: z.string().optional(), // nombre o email
-    // ✅ incluye SUPPORT en el filtro
+    q: z.string().optional(),
     role: z.enum(["ALL", "ADMIN", "SUPPORT", "CUSTOMER"]).default("ALL"),
   });
 
@@ -732,7 +877,7 @@ export default async function adminRoutes(app: FastifyInstance) {
           name: true,
           role: true,
           createdAt: true,
-          _count: { select: { orders: true } }, // si no tienes relación orders, quita esta línea
+          _count: { select: { orders: true } },
         },
       }),
     ]);
@@ -748,7 +893,6 @@ export default async function adminRoutes(app: FastifyInstance) {
 
   app.patch("/admin/users/:id/role", guard, async (req, reply) => {
     const { id } = req.params as { id: string };
-    // ✅ ahora acepta SUPPORT
     const body = z.object({ role: z.nativeEnum(Role) }).parse(req.body);
     try {
       const updated = await app.prisma.user.update({

@@ -60,6 +60,9 @@ const EnvSchema = z.object({
   // Observabilidad (opcional)
   SENTRY_DSN: z.string().url().optional(),
   APP_NAME: z.string().default("Tienda API"),
+
+  // 🌍 Geoapify (para geocoding / mapas)
+  GEOAPIFY_KEY: z.string().optional(),
 });
 
 const raw = EnvSchema.parse(process.env);
@@ -110,5 +113,12 @@ if (!stripeOK) {
   // eslint-disable-next-line no-console
   console.warn(
     "Stripe no está completamente configurado; los pagos/webhooks podrían fallar."
+  );
+}
+
+if (!env.GEOAPIFY_KEY) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    "GEOAPIFY_KEY no está configurada; el buscador de direcciones del mapa devolverá 0 resultados."
   );
 }

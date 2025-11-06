@@ -7,42 +7,43 @@ import sensible from "@fastify/sensible";
 import cookie from "@fastify/cookie";
 import sse from "fastify-sse-v2";
 
-import { env } from "./env";
+import { env } from "./env.js";
 
-// Plugins (sin .js)
-import prismaPlugin from "./plugins/prisma";
-import authPlugin from "./plugins/auth";
+// Plugins
+import prismaPlugin from "./plugins/prisma.js";
+import authPlugin from "./plugins/auth.js";
 
-// Rutas (sin .js)
-import productsRoutes from "./routes/products";
-import ordersRoutes from "./routes/orders";
-import authRoutes from "./routes/auth";
-import meRoutes from "./routes/me";
-import paymentsRoutes from "./routes/payments";
-import categoriesRoutes from "./routes/categories";
-import addressesRoutes from "./routes/addresses";
-import imageProxy from "./routes/image-proxy";
-import adminRoutes from "./routes/admin";
-import cloudinaryRoutes from "./routes/cloudinary";
-import meOrdersRoutes from "./routes/me.orders";
-import twoFARoutes from "./routes/2fa";
-import geoPublicRoutes from "./routes/geo.public";
-import homeRoutes from "./routes/home";
-import mapRoutes from "./routes/mapRoutes";
+// Rutas
+import productsRoutes from "./routes/products.js";
+import ordersRoutes from "./routes/orders.js";
+import authRoutes from "./routes/auth.js";
+import meRoutes from "./routes/me.js";
+import paymentsRoutes from "./routes/payments.js";
+import categoriesRoutes from "./routes/categories.js";
+import addressesRoutes from "./routes/addresses.js";
+import imageProxy from "./routes/image-proxy.js";
+import adminRoutes from "./routes/admin.js";
+import cloudinaryRoutes from "./routes/cloudinary.js";
+import meOrdersRoutes from "./routes/me.orders.js";
+import twoFARoutes from "./routes/2fa.js";
+import geoPublicRoutes from "./routes/geo.public.js";
+import homeRoutes from "./routes/home.js";
+import mapRoutes from "./routes/mapRoutes.js";
+import searchRoutes from "./routes/search.js";
 
-// 💬 Support (nuevo)
-import supportRoutes from "./routes/support";
+// 💬 Support
+import supportRoutes from "./routes/support.js";
 
 // 💱 FX
-import fxPublicRoutes from "./routes/fx.public";
-import fxAdminRoutes from "./routes/fx.admin";
+import fxPublicRoutes from "./routes/fx.public.js";
+import fxAdminRoutes from "./routes/fx.admin.js";
 
 const app = Fastify({
   logger: { level: env.NODE_ENV === "development" ? "debug" : "info" },
   trustProxy: true,
 });
 
-// ───────────────────────── Plugins base (orden recomendado)
+// ───────────────────────── Plugins base
 await app.register(sensible);
 
 await app.register(cookie, {
@@ -50,7 +51,7 @@ await app.register(cookie, {
     domain: env.COOKIE_DOMAIN,
     httpOnly: true,
     secure: env.COOKIE_SECURE,
-    sameSite: env.COOKIE_SAME_SITE, // "Strict" | "Lax" | "None"
+    sameSite: env.COOKIE_SAME_SITE,
     path: "/",
   },
 });
@@ -59,7 +60,7 @@ await app.register(prismaPlugin);
 await app.register(authPlugin);
 await app.register(sse);
 
-// Helmet + CSP segura (permitiendo Cloudinary / proxy / WebSockets)
+// Helmet + CSP
 await app.register(helmet, {
   crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginEmbedderPolicy: false,
@@ -88,14 +89,14 @@ await app.register(helmet, {
   },
 });
 
-// CORS usando orígenes permitidos del env
+// CORS
 await app.register(cors, {
   origin: env.FRONTEND_ORIGINS_ARRAY,
   methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
   credentials: true,
 });
 
-// Rate limit desde .env
+// Rate limit
 await app.register(rateLimit, {
   max: env.RATE_LIMIT_MAX,
   timeWindow: env.RATE_LIMIT_WINDOW,
@@ -109,7 +110,7 @@ app.get("/health", async () => ({
   now: new Date().toISOString(),
 }));
 
-// Públicas / autenticadas generales
+// públicas / generales
 await app.register(authRoutes);
 await app.register(meRoutes);
 await app.register(productsRoutes);
@@ -122,23 +123,25 @@ await app.register(meOrdersRoutes);
 await app.register(twoFARoutes);
 await app.register(homeRoutes);
 await app.register(mapRoutes, { prefix: "/maps" });
-// ...
 
-// 💱 FX público: /fx/*
+// 🔍 Buscador (searchProducts + searchSuggest)
+await app.register(searchRoutes, { prefix: "/search" });
+
+// 💱 FX público
 await app.register(fxPublicRoutes, { prefix: "/fx" });
 
-// Cloudinary signature (autenticada)
+// Cloudinary
 await app.register(cloudinaryRoutes);
 
 // Admin
 await app.register(adminRoutes);
 
-// 💱 FX admin: /admin/fx/*
+// 💱 FX admin
 await app.register(fxAdminRoutes, { prefix: "/admin/fx" });
 
 await app.register(geoPublicRoutes, { prefix: "/geo" });
 
-// 💬 Soporte (nuevo): /support/*
+// 💬 Soporte
 await app.register(supportRoutes, { prefix: "/support" });
 
 // ───────────────────────── Error handler & listen
@@ -152,7 +155,7 @@ app.setErrorHandler((err, req, reply) => {
   reply.status(status).send(body);
 });
 
-// ───────────────────────── Cron diario (opcional, minimal)
+// ───────────────────────── Cron FX (igual que lo tenías)
 type FxStore = {
   asOf: string;
   source: string;
@@ -195,7 +198,6 @@ function scheduleDailyAt(
   planNext();
 }
 
-// Programa a las 9:00 (hora local). Ahora mismo es no-op con logging.
 scheduleDailyAt(9, 0, async () => {
   ensureFxStore();
   app.log.info(
@@ -203,7 +205,6 @@ scheduleDailyAt(9, 0, async () => {
   );
 });
 
-// ───────────────────────── Listen
 app.listen({ port: env.PORT, host: "0.0.0.0" }).then(() => {
   app.log.info(
     `API running → http://localhost:${
