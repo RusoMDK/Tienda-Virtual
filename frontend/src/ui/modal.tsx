@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../utils/cn";
 
@@ -43,7 +43,7 @@ export default function Modal({
           className={cn(
             "w-full max-w-lg rounded-2xl border border-[rgb(var(--line-rgb))] bg-[rgb(var(--card-rgb))] shadow-2xl",
             "opacity-0 translate-y-2 scale-[0.99] animate-[dialogIn_.16s_ease-out_forwards]",
-            wide && "max-w-3xl"
+            wide && "max-w-6xl"
           )}
         >
           {title && (
@@ -63,8 +63,3 @@ export default function Modal({
     document.body
   );
 }
-
-/* Añade estas keyframes en tu CSS global una vez:
-@keyframes fadeIn { to { opacity: 1; } }
-@keyframes dialogIn { to { opacity: 1; transform: translateY(0) scale(1); } }
-*/

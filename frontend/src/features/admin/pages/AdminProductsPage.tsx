@@ -1,4 +1,3 @@
-// src/features/admin/pages/AdminProductsPage.tsx
 import { useMemo, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -9,7 +8,6 @@ import {
   adminAdjustStock,
   adminDeleteProduct,
   adminCreateProduct,
-  adminGetProduct,
   adminGetStockLedger,
 } from "../api";
 import {
@@ -44,6 +42,8 @@ import {
 } from "lucide-react";
 import ImageUploader, { type UImage } from "../components/ImageUploader";
 import { uploadProductImage } from "@/features/uploads/cloudinary";
+import Dropdown from "@/ui/dropdown";
+import Modal from "@/ui/modal";
 
 /* ─────────────────────────────────────────────────────────────
    Tipos y helpers
@@ -61,6 +61,20 @@ type AdminProduct = {
   updatedAt?: string;
   category?: { name: string; slug: string } | null;
   categorySlug?: string | null;
+
+  // Campos enriquecidos
+  brand?: string | null;
+  model?: string | null;
+  color?: string | null;
+  condition?: "NEW" | "USED" | "REFURBISHED" | null;
+  warrantyMonths?: number | null;
+  homeDelivery?: boolean | null;
+  tags?: string[] | null;
+  sku?: string | null;
+  barcode?: string | null;
+
+  // En algunas APIs podrían venir las imágenes
+  images?: { url: string; publicId?: string; position?: number }[];
 };
 
 type ListResp = {
@@ -163,7 +177,7 @@ export default function AdminProductsPage() {
 
   // Query params
   const page = Number(sp.get("page") || 1);
-  const pageSize = Number(sp.get("pageSize") || 20);
+  const pageSize = Number(sp.get("pageSize") || 20); // default 20, opciones 10/20/50
   const qParam = sp.get("q") || "";
   const sort = (sp.get("sort") as string) || "createdAt:desc";
   const status = sp.get("status") || "active"; // active|inactive|all
@@ -301,6 +315,16 @@ export default function AdminProductsPage() {
       active: boolean;
       categorySlug?: string;
       images?: string[]; // URLs
+
+      brand?: string;
+      model?: string;
+      color?: string;
+      condition?: "NEW" | "USED" | "REFURBISHED";
+      warrantyMonths?: number;
+      homeDelivery?: boolean;
+      tags?: string[];
+      sku?: string;
+      barcode?: string;
     }) => adminCreateProduct(payload as any),
     onSuccess: () => {
       toast({ title: "Producto creado", variant: "success" });
@@ -449,7 +473,7 @@ export default function AdminProductsPage() {
       "images",
       "stock",
     ].join(",");
-    const example = [
+    const exampleRow = [
       "Camiseta negra premium",
       "Algodón 100%, corte unisex",
       "19.99",
@@ -463,7 +487,7 @@ export default function AdminProductsPage() {
         /,|\n|"/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : c
       )
       .join(",");
-    const blob = new Blob([headers + "\n" + example], {
+    const blob = new Blob([headers + "\n" + exampleRow], {
       type: "text/csv;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
@@ -561,6 +585,7 @@ export default function AdminProductsPage() {
   type FormState = {
     id?: string;
     slug?: string; // para carpeta products/<slug> en edición
+
     name: string;
     description: string;
     priceStr: string;
@@ -568,7 +593,19 @@ export default function AdminProductsPage() {
     active: boolean;
     categorySlug?: string;
     images: UImage[];
+
+    // Campos de calidad
+    brand: string;
+    model: string;
+    color: string;
+    condition: "" | "NEW" | "USED" | "REFURBISHED";
+    warrantyMonths: string; // input texto
+    homeDelivery: boolean;
+    tagsStr: string; // "gaming, laptop, 16gb"
+    sku: string;
+    barcode: string;
   };
+
   const [modalOpen, setModalOpen] = useState(false);
   const [mode, setMode] = useState<"create" | "edit">("create");
   const [form, setForm] = useState<FormState>({
@@ -579,8 +616,18 @@ export default function AdminProductsPage() {
     active: true,
     categorySlug: undefined,
     images: [],
+
+    brand: "",
+    model: "",
+    color: "",
+    condition: "",
+    warrantyMonths: "",
+    homeDelivery: true,
+    tagsStr: "",
+    sku: "",
+    barcode: "",
   });
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false); // ahora no lo usamos para fetch, solo para overlay si quieres en un futuro
 
   function openCreate() {
     setMode("create");
@@ -592,74 +639,117 @@ export default function AdminProductsPage() {
       active: true,
       categorySlug: undefined,
       images: [],
+
+      brand: "",
+      model: "",
+      color: "",
+      condition: "",
+      warrantyMonths: "",
+      homeDelivery: true,
+      tagsStr: "",
+      sku: "",
+      barcode: "",
     });
     setModalOpen(true);
   }
-  async function openEdit(id: string) {
+
+  // 👉 Ahora no llamamos adminGetProduct: usamos directamente el producto de la tabla
+  function openEdit(p: AdminProduct) {
     setMode("edit");
-    setLoadingDetail(true);
     setModalOpen(true);
-    try {
-      const p = await adminGetProduct(id);
-      setForm({
-        id: p.id,
-        slug: p.slug,
-        name: p.name ?? "",
-        description: p.description ?? "",
-        priceStr: (p.price / 100).toString(),
-        currency: p.currency || "usd",
-        active: !!p.active,
-        categorySlug: p.categorySlug || p.category?.slug,
-        images:
-          (p as any).images?.map((im: any) => ({
-            url: im.url,
-            publicId: im.publicId || "",
-            position: im.position ?? 0,
-          })) ?? [],
-      });
-    } catch {
-      toast({ title: "No se pudo cargar el producto", variant: "error" });
-      setModalOpen(false);
-    } finally {
-      setLoadingDetail(false);
-    }
+    setForm({
+      id: p.id,
+      slug: p.slug,
+      name: p.name ?? "",
+      description: p.description ?? "",
+      priceStr: (p.price / 100).toString(),
+      currency: p.currency || "usd",
+      active: !!p.active,
+      categorySlug: p.categorySlug || p.category?.slug,
+      images:
+        (p as any).images?.map((im: any) => ({
+          url: im.url,
+          publicId: im.publicId || "",
+          position: im.position ?? 0,
+        })) ?? [],
+
+      brand: (p as any).brand ?? "",
+      model: (p as any).model ?? "",
+      color: (p as any).color ?? "",
+      condition: ((p as any).condition as any) ?? "",
+      warrantyMonths:
+        (p as any).warrantyMonths != null
+          ? String((p as any).warrantyMonths)
+          : "",
+      homeDelivery: !!(p as any).homeDelivery,
+      tagsStr: Array.isArray((p as any).tags) ? (p as any).tags.join(", ") : "",
+      sku: (p as any).sku ?? "",
+      barcode: (p as any).barcode ?? "",
+    });
   }
+
   function closeModal() {
     setModalOpen(false);
     setLoadingDetail(false);
   }
+
   function formValid(): string | null {
     if (!form.name.trim()) return "El nombre es obligatorio";
     const cents = strToCents(form.priceStr);
     if (cents === null || cents < 0) return "Precio inválido";
+
+    if (form.warrantyMonths.trim()) {
+      const n = Number(form.warrantyMonths.trim());
+      if (!Number.isFinite(n) || n < 0) return "Garantía inválida";
+    }
+
     return null;
   }
+
   async function submitForm() {
     const err = formValid();
     if (err) return toast({ title: err, variant: "error" });
+
     const price = strToCents(form.priceStr)!;
+
+    const warrantyRaw = form.warrantyMonths.trim();
+    const warrantyNum = warrantyRaw === "" ? undefined : Number(warrantyRaw);
+
+    const tags =
+      form.tagsStr
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean) || [];
+
+    const basePayload = {
+      name: form.name.trim(),
+      description: form.description.trim(),
+      price,
+      currency: form.currency,
+      active: form.active,
+      categorySlug: form.categorySlug || undefined,
+      images: imagesToUrls(form.images),
+
+      brand: form.brand.trim() || undefined,
+      model: form.model.trim() || undefined,
+      color: form.color.trim() || undefined,
+      condition: form.condition || undefined,
+      warrantyMonths:
+        warrantyNum != null && Number.isFinite(warrantyNum)
+          ? warrantyNum
+          : undefined,
+      homeDelivery: form.homeDelivery,
+      tags: tags.length ? tags : undefined,
+      sku: form.sku.trim() || undefined,
+      barcode: form.barcode.trim() || undefined,
+    };
+
     if (mode === "create") {
-      await createMut.mutateAsync({
-        name: form.name.trim(),
-        description: form.description.trim(),
-        price,
-        currency: form.currency,
-        active: form.active,
-        categorySlug: form.categorySlug || undefined,
-        images: imagesToUrls(form.images), // URLs al backend
-      });
+      await createMut.mutateAsync(basePayload);
     } else if (mode === "edit" && form.id) {
       await patchMut.mutateAsync({
         id: form.id,
-        payload: {
-          name: form.name.trim(),
-          description: form.description.trim(),
-          price,
-          currency: form.currency,
-          active: form.active,
-          categorySlug: form.categorySlug || undefined,
-          images: imagesToUrls(form.images), // URLs al backend
-        },
+        payload: basePayload,
       });
     }
   }
@@ -815,24 +905,35 @@ export default function AdminProductsPage() {
                 ))}
               </select>
 
-              {/* Tamaño de página */}
-              <select
-                className="h-10 rounded-xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] px-3 text-sm outline-none"
-                value={String(pageSize)}
-                onChange={(e) => {
-                  const nxt = new URLSearchParams(sp);
-                  nxt.set("pageSize", e.target.value);
-                  nxt.set("page", "1");
-                  setSp(nxt, { replace: true });
-                }}
-                title="Tamaño de página"
-              >
-                {[20, 50].map((n) => (
-                  <option key={n} value={n}>
-                    {n} / página
-                  </option>
-                ))}
-              </select>
+              {/* Tamaño de página (Dropdown con flecha que rota) */}
+              <Dropdown
+                align="left"
+                trigger={({ open, toggle }) => (
+                  <button
+                    type="button"
+                    onClick={toggle}
+                    title="Tamaño de página"
+                    className="inline-flex items-center gap-1 h-10 rounded-xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] px-3 text-sm outline-none"
+                  >
+                    <span>{pageSize} / página</span>
+                    <ChevronDown
+                      size={14}
+                      className={`transition-transform ${
+                        open ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                )}
+                items={[10, 20, 50].map((n) => ({
+                  label: `${n} / página`,
+                  onSelect: () => {
+                    const nxt = new URLSearchParams(sp);
+                    nxt.set("pageSize", String(n));
+                    nxt.set("page", "1");
+                    setSp(nxt, { replace: true });
+                  },
+                }))}
+              />
             </div>
 
             {/* DERECHA: acciones */}
@@ -1218,7 +1319,7 @@ export default function AdminProductsPage() {
                             <Button
                               size="sm"
                               variant="secondary"
-                              onClick={() => openEdit(p.id)}
+                              onClick={() => openEdit(p)}
                               aria-label="Editar"
                               title="Editar"
                             >
@@ -1427,35 +1528,76 @@ export default function AdminProductsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog: Crear / Editar (ANCHO PRO 🔥) */}
-      <Dialog
+      {/* Modal: Crear / Editar (usa tu Modal wide) */}
+      <Modal
         open={modalOpen}
-        onOpenChange={(v) => (v ? setModalOpen(true) : closeModal())}
+        onClose={closeModal}
+        wide
+        title={mode === "create" ? "Nuevo producto" : "Editar producto"}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={closeModal}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={submitForm}
+              disabled={
+                createMut.isPending || patchMut.isPending || loadingDetail
+              }
+              className="inline-flex items-center gap-1"
+            >
+              <Check size={16} />
+              {mode === "create" ? "Crear" : "Guardar cambios"}
+            </Button>
+          </div>
+        }
       >
-        <DialogContent className="w-[min(1200px,calc(100vw-2rem))]">
-          <DialogHeader>
-            <DialogTitle>
-              {mode === "create" ? "Nuevo producto" : "Editar producto"}
-            </DialogTitle>
-            <DialogDescription>
-              Mantén la info clara. La primera imagen será la principal.
-            </DialogDescription>
-          </DialogHeader>
+        <div className="relative">
+          <p className="text-xs opacity-70 mb-4">
+            Mantén la información completa. La primera imagen será la principal.
+          </p>
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
             {/* Col formulario */}
             <div className="md:col-span-7 space-y-4">
-              <label className="block space-y-1.5">
-                <Label className="text-xs">Nombre</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, name: e.target.value }))
-                  }
-                  placeholder="Ej: Camiseta negra premium"
-                />
-              </label>
+              {/* Nombre + Marca / Modelo */}
+              <div className="space-y-3">
+                <label className="block space-y-1.5">
+                  <Label className="text-xs">Nombre</Label>
+                  <Input
+                    value={form.name}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, name: e.target.value }))
+                    }
+                    placeholder="Ej: Laptop gamer 15'' RTX 4060"
+                  />
+                </label>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <label className="block space-y-1.5">
+                    <Label className="text-xs">Marca</Label>
+                    <Input
+                      value={form.brand}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, brand: e.target.value }))
+                      }
+                      placeholder="Ej: ASUS, Lenovo, etc."
+                    />
+                  </label>
+                  <label className="block space-y-1.5">
+                    <Label className="text-xs">Modelo</Label>
+                    <Input
+                      value={form.model}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, model: e.target.value }))
+                      }
+                      placeholder="Ej: ROG Strix G15"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Descripción */}
               <label className="block space-y-1.5">
                 <Label className="text-xs">Descripción</Label>
                 <textarea
@@ -1463,12 +1605,13 @@ export default function AdminProductsPage() {
                   onChange={(e) =>
                     setForm((f) => ({ ...f, description: e.target.value }))
                   }
-                  placeholder="Detalles del producto…"
-                  rows={10}
-                  className="w-full rounded-xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] px-3 py-2 text-sm outline-none"
+                  placeholder="Detalles clave, especificaciones, materiales, etc."
+                  rows={8}
+                  className="w-full rounded-xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] px-3 py-2 text-sm outline-none resize-y min-h-[160px]"
                 />
               </label>
 
+              {/* Precio / Moneda */}
               <div className="grid grid-cols-2 gap-4">
                 <label className="block space-y-1.5">
                   <Label className="text-xs">Precio</Label>
@@ -1477,7 +1620,7 @@ export default function AdminProductsPage() {
                     onChange={(e) =>
                       setForm((f) => ({ ...f, priceStr: e.target.value }))
                     }
-                    placeholder="Ej: 19.99"
+                    placeholder="Ej: 1499.99"
                   />
                 </label>
 
@@ -1497,6 +1640,78 @@ export default function AdminProductsPage() {
                 </label>
               </div>
 
+              {/* Color / Condición */}
+              <div className="grid grid-cols-2 gap-4">
+                <label className="block space-y-1.5">
+                  <Label className="text-xs">Color principal</Label>
+                  <Input
+                    value={form.color}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, color: e.target.value }))
+                    }
+                    placeholder="Ej: negro, rojo, azul..."
+                  />
+                </label>
+
+                <label className="block space-y-1.5">
+                  <Label className="text-xs">Condición</Label>
+                  <select
+                    value={form.condition}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        condition: e.target.value as FormState["condition"],
+                      }))
+                    }
+                    className="w-full h-10 rounded-xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] px-3 text-sm outline-none"
+                  >
+                    <option value="">No especificar</option>
+                    <option value="NEW">Nuevo</option>
+                    <option value="USED">Usado</option>
+                    <option value="REFURBISHED">Reacondicionado</option>
+                  </select>
+                </label>
+              </div>
+
+              {/* Garantía / Entrega */}
+              <div className="grid grid-cols-2 gap-4">
+                <label className="block space-y-1.5">
+                  <Label className="text-xs">Garantía (meses)</Label>
+                  <Input
+                    value={form.warrantyMonths}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        warrantyMonths: e.target.value,
+                      }))
+                    }
+                    placeholder="Ej: 12"
+                  />
+                </label>
+
+                <div className="block space-y-1.5">
+                  <Label className="text-xs">Entrega</Label>
+                  <div className="flex items-center h-10">
+                    <label className="inline-flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={form.homeDelivery}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            homeDelivery: e.target.checked,
+                          }))
+                        }
+                      />
+                      <span className="text-sm opacity-80">
+                        Disponible envío a domicilio
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Categoría / Estado */}
               <div className="grid grid-cols-2 gap-4">
                 <label className="block space-y-1.5">
                   <Label className="text-xs">Categoría</Label>
@@ -1521,7 +1736,7 @@ export default function AdminProductsPage() {
                   </select>
                 </label>
 
-                <label className="block space-y-1.5">
+                <div className="block space-y-1.5">
                   <Label className="text-xs">Estado</Label>
                   <div className="flex items-center h-10">
                     <label className="inline-flex items-center gap-2">
@@ -1529,7 +1744,10 @@ export default function AdminProductsPage() {
                         type="checkbox"
                         checked={form.active}
                         onChange={(e) =>
-                          setForm((f) => ({ ...f, active: e.target.checked }))
+                          setForm((f) => ({
+                            ...f,
+                            active: e.target.checked,
+                          }))
                         }
                       />
                       <span className="text-sm opacity-80">
@@ -1537,6 +1755,46 @@ export default function AdminProductsPage() {
                       </span>
                     </label>
                   </div>
+                </div>
+              </div>
+
+              {/* Tags */}
+              <label className="block space-y-1.5">
+                <Label className="text-xs">Tags (para búsqueda)</Label>
+                <Input
+                  value={form.tagsStr}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, tagsStr: e.target.value }))
+                  }
+                  placeholder="Ej: gamer, 16gb ram, rtx 4060"
+                />
+                <div className="text-[11px] opacity-60">
+                  Separados por coma. Se usarán para mejorar la búsqueda y los
+                  filtros.
+                </div>
+              </label>
+
+              {/* SKU / Código de barras */}
+              <div className="grid grid-cols-2 gap-4">
+                <label className="block space-y-1.5">
+                  <Label className="text-xs">SKU interno</Label>
+                  <Input
+                    value={form.sku}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, sku: e.target.value }))
+                    }
+                    placeholder="Código interno de inventario"
+                  />
+                </label>
+                <label className="block space-y-1.5">
+                  <Label className="text-xs">Código de barras / GTIN</Label>
+                  <Input
+                    value={form.barcode}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, barcode: e.target.value }))
+                    }
+                    placeholder="EAN / UPC / GTIN"
+                  />
                 </label>
               </div>
             </div>
@@ -1576,25 +1834,6 @@ export default function AdminProductsPage() {
             </div>
           </div>
 
-          {/* Footer sticky dentro del modal (no se “encoge”) */}
-          <div className="sticky bottom-0 -mx-6 mt-6 border-t border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] px-6 py-3">
-            <div className="flex justify-end gap-2">
-              <Button variant="secondary" onClick={closeModal}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={submitForm}
-                disabled={
-                  createMut.isPending || patchMut.isPending || loadingDetail
-                }
-                className="inline-flex items-center gap-1"
-              >
-                <Check size={16} />
-                {mode === "create" ? "Crear" : "Guardar cambios"}
-              </Button>
-            </div>
-          </div>
-
           {(loadingDetail || createMut.isPending || patchMut.isPending) && (
             <div className="absolute inset-0 rounded-2xl bg-black/30 grid place-content-center">
               <div className="text-sm opacity-90 px-3 py-2 rounded-lg border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] animate-pulse">
@@ -1602,8 +1841,8 @@ export default function AdminProductsPage() {
               </div>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </div>
+      </Modal>
     </div>
   );
 }

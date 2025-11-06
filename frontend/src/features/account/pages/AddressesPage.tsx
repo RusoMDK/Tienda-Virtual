@@ -1,4 +1,3 @@
-// src/features/account/pages/AddressesPage.tsx
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   listAddresses,
@@ -29,17 +28,17 @@ type DraftLocation = {
 export default function AddressesPage() {
   const qc = useQueryClient();
   const toast = useToast();
+
   const { data, isLoading } = useQuery({
     queryKey: ["addresses"],
     queryFn: listAddresses,
   });
 
   const [editing, setEditing] = useState<Address | null>(null);
-
-  // Ubicación seleccionada en el mapa (para el formulario actual)
   const [draftLocation, setDraftLocation] = useState<DraftLocation | null>(
     null
   );
+  const [showModal, setShowModal] = useState(false);
 
   // Si estás editando una dirección que ya tiene lat/lng, precarga el mapa
   useEffect(() => {
@@ -49,10 +48,28 @@ export default function AddressesPage() {
         lng: (editing as any).lng,
         label: (editing as any).mapLabel,
       });
-    } else {
+    } else if (!editing) {
       setDraftLocation(null);
     }
   }, [editing]);
+
+  function openCreateModal() {
+    setEditing(null);
+    setDraftLocation(null);
+    setShowModal(true);
+  }
+
+  function openEditModal(a: Address) {
+    setEditing(a);
+    setShowModal(true);
+  }
+
+  function closeModal() {
+    if (createMut.isPending || updateMut.isPending) return;
+    setShowModal(false);
+    setEditing(null);
+    setDraftLocation(null);
+  }
 
   const createMut = useMutation({
     mutationFn: (v: AddressFormValues) => {
@@ -68,6 +85,7 @@ export default function AddressesPage() {
       qc.invalidateQueries({ queryKey: ["addresses"] });
       toast({ title: "Dirección guardada", variant: "success" });
       setDraftLocation(null);
+      setShowModal(false);
     },
     onError: () => toast({ title: "No se pudo guardar", variant: "error" }),
   });
@@ -92,6 +110,7 @@ export default function AddressesPage() {
       qc.invalidateQueries({ queryKey: ["addresses"] });
       setEditing(null);
       setDraftLocation(null);
+      setShowModal(false);
       toast({ title: "Dirección actualizada", variant: "success" });
     },
     onError: () => toast({ title: "No se pudo actualizar", variant: "error" }),
@@ -136,14 +155,30 @@ export default function AddressesPage() {
     onError: () => toast({ title: "No se pudo eliminar", variant: "error" }),
   });
 
+  const modalTitle = editing ? "Editar dirección" : "Nueva dirección";
+
   return (
-    <div className="grid gap-6 md:grid-cols-2">
+    <div className="space-y-6">
+      {/* Bloque principal: listado + CTA crear */}
       <Card>
-        <CardHeader className="pb-2">
-          <h2 className="font-semibold">Mis direcciones</h2>
+        <CardHeader className="pb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-semibold text-base md:text-lg">
+              Mis direcciones
+            </h2>
+            <p className="text-xs md:text-sm opacity-70 mt-1">
+              Administra tus direcciones de envío y facturación. Puedes marcar
+              una como predeterminada para el checkout.
+            </p>
+          </div>
+          <Button size="sm" onClick={openCreateModal} className="mt-2 sm:mt-0">
+            Añadir dirección
+          </Button>
         </CardHeader>
         <CardContent>
-          {isLoading && <div className="opacity-70 text-sm">Cargando…</div>}
+          {isLoading && (
+            <div className="opacity-70 text-sm py-2">Cargando…</div>
+          )}
           <div className="space-y-3">
             {data?.map((a) => (
               <div
@@ -151,34 +186,40 @@ export default function AddressesPage() {
                 className="rounded-xl border border-[var(--border)] p-3 bg-[var(--card)]"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <div className="font-medium flex items-center gap-2">
-                      {a.recipientName}
-                      {a.isDefaultShipping && <Badge>Envío</Badge>}
-                      {a.isDefaultBilling && <Badge>Facturación</Badge>}
+                      <span className="truncate">{a.recipientName}</span>
+                      {a.isDefaultShipping && (
+                        <Badge variant="success">Envío</Badge>
+                      )}
+                      {a.isDefaultBilling && (
+                        <Badge variant="outline">Facturación</Badge>
+                      )}
                     </div>
-                    <div className="text-sm opacity-80">{moneyAddr(a)}</div>
+                    <div className="text-sm opacity-80 mt-0.5">
+                      {moneyAddr(a)}
+                    </div>
                     {a.phone && (
                       <div className="text-xs opacity-70 mt-0.5">
                         Tel: {a.phone}
                       </div>
                     )}
                     {(a as any).mapLabel && (
-                      <div className="text-[11px] opacity-60 mt-0.5">
-                        {String((a as any).mapLabel)}
+                      <div className="text-[11px] opacity-60 mt-0.5 truncate">
+                        Punto en mapa: {String((a as any).mapLabel)}
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-1 shrink-0">
                     <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setEditing(a)}
+                      size="xs"
+                      variant="secondary"
+                      onClick={() => openEditModal(a)}
                     >
                       Editar
                     </Button>
                     <Button
-                      size="sm"
+                      size="xs"
                       variant="destructive"
                       onClick={() => delMut.mutate(a.id)}
                     >
@@ -186,9 +227,10 @@ export default function AddressesPage() {
                     </Button>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2 mt-2">
+
+                <div className="flex flex-wrap gap-2 mt-3">
                   <Button
-                    size="sm"
+                    size="xs"
                     variant={a.isDefaultShipping ? "success" : "secondary"}
                     disabled={a.isDefaultShipping}
                     onClick={() =>
@@ -200,7 +242,7 @@ export default function AddressesPage() {
                       : "Envío por defecto"}
                   </Button>
                   <Button
-                    size="sm"
+                    size="xs"
                     variant={a.isDefaultBilling ? "success" : "secondary"}
                     disabled={a.isDefaultBilling}
                     onClick={() =>
@@ -214,62 +256,83 @@ export default function AddressesPage() {
                 </div>
               </div>
             ))}
-            {data?.length === 0 && (
-              <div className="opacity-70 text-sm">
-                No tienes direcciones guardadas.
+            {data?.length === 0 && !isLoading && (
+              <div className="opacity-70 text-sm py-2">
+                No tienes direcciones guardadas. Usa el botón{" "}
+                <span className="font-medium">“Añadir dirección”</span> para
+                crear la primera.
               </div>
             )}
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="pb-2 flex items-start justify-between">
-          <div>
-            <h2 className="font-semibold">
-              {editing ? "Editar dirección" : "Nueva dirección"}
-            </h2>
-            <p className="text-xs opacity-70 mt-1 sm:hidden">
-              Los campos marcados con <span className="text-red-400">*</span>{" "}
-              son obligatorios.
-            </p>
-          </div>
-          <p className="text-xs opacity-70 hidden sm:block">
-            Los campos marcados con <span className="text-red-400">*</span> son
-            obligatorios.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <AddressForm
-            initialValues={editing || { country: "CU" }} // Cuba por defecto
-            submitting={createMut.isPending || updateMut.isPending}
-            submitLabel={editing ? "Actualizar dirección" : "Guardar dirección"}
-            onCancel={editing ? () => setEditing(null) : undefined}
-            onSubmit={(v) => {
-              if (editing) return updateMut.mutate({ id: editing.id, data: v });
-              return createMut.mutate(v);
-            }}
-          />
+      {/* MODAL: Crear / editar dirección + mapa */}
+      {showModal && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 px-3">
+          <div className="relative w-full max-w-5xl rounded-2xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] shadow-2xl p-4 md:p-6">
+            {/* Cerrar */}
+            <button
+              type="button"
+              onClick={closeModal}
+              className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black/85"
+            >
+              ✕
+            </button>
 
-          {/* Mapa para seleccionar ubicación */}
-          <div className="pt-3 border-t border-[rgb(var(--border-rgb))] space-y-2">
-            <div>
-              <h3 className="text-sm font-semibold">
-                Ubicación en el mapa (opcional)
-              </h3>
-              <p className="text-xs opacity-70">
-                Usa el buscador, el botón de ubicación o haz clic en el mapa
-                para seleccionar dónde vives o el punto de recogida. Se guardará
-                junto con esta dirección.
+            <div className="mb-4 pr-8">
+              <h2 className="font-semibold text-base md:text-lg">
+                {modalTitle}
+              </h2>
+              <p className="text-xs md:text-sm opacity-70 mt-1">
+                Completa los datos de la dirección y, si quieres, marca también
+                el punto exacto en el mapa para facilitar los envíos.
               </p>
             </div>
-            <AddressMapPicker
-              value={draftLocation ?? undefined}
-              onChange={(pos) => setDraftLocation(pos)}
-            />
+
+            <div className="grid gap-5 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.1fr)]">
+              {/* Formulario */}
+              <div className="space-y-3">
+                <AddressForm
+                  initialValues={editing || { country: "CU" }} // Cuba por defecto
+                  submitting={createMut.isPending || updateMut.isPending}
+                  submitLabel={
+                    editing ? "Actualizar dirección" : "Guardar dirección"
+                  }
+                  onCancel={closeModal}
+                  onSubmit={(v) => {
+                    if (editing)
+                      return updateMut.mutate({ id: editing.id, data: v });
+                    return createMut.mutate(v);
+                  }}
+                />
+                <p className="text-[11px] opacity-70">
+                  Los campos marcados con{" "}
+                  <span className="text-red-400">*</span> son obligatorios.
+                </p>
+              </div>
+
+              {/* Mapa */}
+              <div className="pt-2 border-t md:border-t-0 md:border-l border-[rgb(var(--border-rgb))] md:pl-5 space-y-2">
+                <div>
+                  <h3 className="text-sm font-semibold">
+                    Ubicación en el mapa (opcional)
+                  </h3>
+                  <p className="text-xs opacity-70">
+                    Usa el buscador, el botón de ubicación o haz clic en el mapa
+                    para seleccionar tu casa o punto de recogida. El punto se
+                    guarda junto con esta dirección.
+                  </p>
+                </div>
+                <AddressMapPicker
+                  value={draftLocation ?? undefined}
+                  onChange={(pos) => setDraftLocation(pos)}
+                />
+              </div>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      )}
     </div>
   );
 }

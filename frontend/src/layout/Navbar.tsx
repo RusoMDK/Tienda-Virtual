@@ -1,7 +1,7 @@
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Input, IconButton, Badge, Dropdown, Button } from "@/ui";
+import { Input, IconButton, Badge, Dropdown } from "@/ui";
 import {
   ShoppingCart,
   Search,
@@ -18,6 +18,7 @@ import { api } from "@/lib/api";
 import ThemeToggle from "@/theme/ThemeToggle";
 import { useCurrency } from "@/features/currency/CurrencyProvider";
 import { Price } from "@/features/currency/Price";
+import SearchBox from "@/features/Search/components/SearchBox";
 
 /* Utils */
 function initials(name?: string | null, email?: string | null) {
@@ -33,6 +34,9 @@ type Cat = {
   name: string;
   sub?: { slug: string; name: string }[];
 };
+
+/** ====== Tipos para autocompletado ====== */
+/* El tipo de sugerencias se mueve al componente SearchBox */
 
 /* Language switcher */
 function LangSwitcher() {
@@ -134,13 +138,32 @@ export default function Navbar() {
   const nav = useNavigate();
   const [sp] = useSearchParams();
 
-  // Search state
+  // Estado compartido de búsqueda (desktop + móvil)
   const [term, setTerm] = useState("");
   const [cat, setCat] = useState<string>("all");
+
   useEffect(() => {
     setTerm(sp.get("q") || "");
     setCat(sp.get("cat") || "all");
   }, [sp]);
+
+  // Helper centralizado para ir a /search
+  function goToSearch(params?: { q?: string; cat?: string }) {
+    const qRaw = (params?.q ?? term).trim();
+    const c = params?.cat ?? cat;
+
+    const next = new URLSearchParams();
+    if (qRaw) next.set("q", qRaw);
+    if (c && c !== "all") next.set("cat", c);
+    next.set("page", "1");
+
+    nav(`/search?${next.toString()}`);
+  }
+
+  function handleSearchSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    goToSearch({});
+  }
 
   // Cart
   const items = useCartStore((s) => s.items);
@@ -178,7 +201,7 @@ export default function Navbar() {
     setAvatarError(false);
   }, [avatarUrl]);
 
-  // Categorías
+  // Categorías para la fila de atajos ("Todas las categorías", etc.)
   const {
     data: categories,
     isLoading: catsLoading,
@@ -197,15 +220,6 @@ export default function Navbar() {
     [categories]
   );
 
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const next = new URLSearchParams(sp);
-    term ? next.set("q", term) : next.delete("q");
-    cat && cat !== "all" ? next.set("cat", cat) : next.delete("cat");
-    next.set("page", "1");
-    nav(`/?${next.toString()}`);
-  }
-
   const userInitials = user
     ? initials(user.name as any, user.email as any)
     : "U";
@@ -216,7 +230,12 @@ export default function Navbar() {
     : "Hola, identifícate";
 
   return (
-    <header className="sticky top-0 z-40 shadow-sm bg-[rgb(var(--card-rgb))]">
+    <header
+      className="
+        sticky top-0 z-40 shadow-sm
+        bg-[rgb(var(--card-rgb)/0.9)] backdrop-blur-md
+      "
+    >
       {/* Barra superior info */}
       <div className="hidden md:block border-b border-[rgb(var(--border-rgb))]">
         <Container className="!max-w-none px-4 lg:px-10 flex items-center justify-between text-[11px] lg:text-xs xl:text-[13px] py-1 text-[rgb(var(--fg-rgb)/0.8)]">
@@ -229,7 +248,7 @@ export default function Navbar() {
           <div className="flex items-center gap-4">
             <button
               type="button"
-              onClick={() => nav("/help")} // ⬅ CAMBIO AQUÍ
+              onClick={() => nav("/help")}
               className="hover:underline underline-offset-4"
             >
               Ayuda
@@ -251,7 +270,8 @@ export default function Navbar() {
       <div className="hidden sm:block border-b border-[rgb(var(--border-rgb))]">
         <Container
           className="
-            !max-w-none px-3 sm:px-4 md:px-6 lg:px-10 xl:px-14
+            !max-w-none w-full
+            px-3 sm:px-4 md:px-6 lg:px-10 xl:px-14
             grid items-center gap-2 md:gap-3
             grid-cols-[auto_minmax(0,1.6fr)_auto]
             lg:grid-cols-[auto_minmax(0,2fr)_auto]
@@ -276,10 +296,10 @@ export default function Navbar() {
               type="button"
               onClick={() => nav("/account/addresses/map")}
               className="
-    hidden lg:flex items-center gap-1 px-2 py-1 rounded-lg
-    hover:bg-[rgb(var(--card-2-rgb))]
-    text-xs
-  "
+                hidden lg:flex items-center gap-1 px-2 py-1 rounded-lg
+                hover:bg-[rgb(var(--card-2-rgb))]
+                text-xs
+              "
             >
               <MapPin size={14} />
               <span className="flex flex-col leading-tight text-left">
@@ -291,123 +311,14 @@ export default function Navbar() {
             </button>
           </div>
 
-          {/* Buscador grande (más ancho y alto) */}
-          <form
-            onSubmit={submit}
-            role="search"
-            aria-label="Buscar productos"
-            className="w-full justify-self-center max-w-4xl xl:max-w-5xl 2xl:max-w-6xl"
-          >
-            <div
-              className="
-                group flex items-stretch w-full
-                rounded-xl overflow-hidden
-                bg-[rgb(var(--bg-rgb))]
-                border border-[rgb(var(--border-rgb))]
-                focus-within:ring-2 focus-within:ring-[rgb(var(--ring-rgb))]
-                focus-within:border-transparent
-                transition
-              "
-            >
-              {/* Select de categoría ~25% */}
-              <div
-                className="
-                  relative flex items-center
-                  shrink-0
-                  basis-[25%]
-                  min-w-[140px] md:min-w-[160px] xl:min-w-[190px]
-                  max-w-[260px] xl:max-w-[320px]
-                  bg-[rgb(var(--card-2-rgb))]
-                  border-r border-[rgb(var(--border-rgb))]
-                "
-              >
-                <label htmlFor="navbar-cat" className="sr-only">
-                  Categoría
-                </label>
-                <select
-                  id="navbar-cat"
-                  name="cat"
-                  value={cat}
-                  onChange={(e) => setCat(e.target.value)}
-                  disabled={catsLoading || catsError}
-                  aria-label="Seleccionar categoría"
-                  className="
-                    w-full
-                    h-10 md:h-11 lg:h-12 xl:h-[3.05rem]
-                    pl-3 pr-7
-                    text-[11px] md:text-xs lg:text-sm xl:text-[15px]
-                    bg-transparent
-                    border-0
-                    appearance-none
-                    outline-none
-                    cursor-pointer
-                    truncate
-                  "
-                >
-                  <option value="all">Todas las categorías</option>
-                  {parentCats.map((p) => (
-                    <optgroup key={p.slug} label={p.name}>
-                      {(p.sub || []).map((s) => (
-                        <option key={s.slug} value={s.slug}>
-                          {s.name}
-                        </option>
-                      ))}
-                      <option value={p.slug}>{p.name} (todo)</option>
-                    </optgroup>
-                  ))}
-                </select>
-                <span
-                  className="
-                    pointer-events-none
-                    absolute right-2 top-1/2 -translate-y-1/2
-                    text-[rgb(var(--fg-rgb)/0.6)]
-                  "
-                >
-                  <ChevronDown size={16} />
-                </span>
-              </div>
-
-              {/* Input */}
-              <div className="relative flex-1 min-w-0">
-                <label htmlFor="navbar-q" className="sr-only">
-                  Buscar
-                </label>
-                <Input
-                  id="navbar-q"
-                  name="q"
-                  autoComplete="off"
-                  placeholder="Buscar productos, marcas, categorías..."
-                  value={term}
-                  onChange={(e) => setTerm(e.target.value)}
-                  className="
-                    h-10 md:h-11 lg:h-12 xl:h-[3.05rem]
-                    border-0
-                    rounded-none
-                    bg-transparent
-                    pl-3 pr-12
-                    text-sm md:text-[15px] lg:text-base xl:text-[17px]
-                    focus:ring-0 focus:outline-none
-                  "
-                />
-                <button
-                  type="submit"
-                  aria-label="Buscar"
-                  className="
-                    absolute right-1.5 top-1/2 -translate-y-1/2
-                    inline-flex items-center justify-center
-                    h-8 w-8 md:h-9 md:w-9 lg:h-10 lg:w-10
-                    rounded-lg transition
-                    text-[rgb(var(--bg-rgb))]
-                    bg-[rgb(var(--primary-rgb))]
-                    hover:bg-[rgb(var(--primary-rgb)/0.9)]
-                    focus-visible:outline-none
-                  "
-                >
-                  <Search className="h-4 w-4 md:h-5 md:w-5" />
-                </button>
-              </div>
-            </div>
-          </form>
+          {/* Buscador grande (componente) */}
+          <SearchBox
+            term={term}
+            setTerm={setTerm}
+            cat={cat}
+            setCat={setCat}
+            onSearch={goToSearch}
+          />
 
           {/* Derecha: idioma/moneda/tema + cuenta + carrito */}
           <div className="flex items-center gap-2 justify-self-end">
@@ -539,18 +450,47 @@ export default function Navbar() {
 
         {/* Segunda fila: links rápidos tipo Amazon */}
         <Container className="!max-w-none px-3 sm:px-4 md:px-6 lg:px-10 xl:px-14 hidden md:flex items-center gap-4 h-10 lg:h-11 text-[12px] lg:text-[13px] xl:text-sm text-[rgb(var(--fg-rgb)/0.9)]">
-          <button
-            type="button"
-            onClick={() => nav("/categorias")}
-            className="
-              inline-flex items-center gap-1 px-2 py-1 rounded-lg
-              hover:bg-[rgb(var(--card-2-rgb))]
-              font-medium
-            "
-          >
-            <Menu size={14} />
-            <span>Todas las categorías</span>
-          </button>
+          {/* Todas las categorías usando también Dropdown bonito */}
+          <Dropdown
+            trigger={({ open, toggle }) => (
+              <button
+                type="button"
+                onClick={toggle}
+                className="
+                  inline-flex items-center gap-1.5 rounded-lg px-2 py-1
+                  text-xs lg:text-[13px] xl:text-sm
+                  border bg-[rgb(var(--card-2-rgb))] border-[rgb(var(--border-rgb))]
+                  hover:bg-[rgb(var(--muted-rgb))]
+                  font-medium
+                "
+              >
+                <Menu size={14} className="opacity-80" />
+                <span>Todas las categorías</span>
+                <ChevronDown
+                  size={14}
+                  className={`opacity-80 transition-transform duration-150 ${
+                    open ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+            )}
+            items={[
+              {
+                label: "Todas las categorías",
+                onSelect: () => nav("/categorias"),
+              },
+              ...(parentCats || []).flatMap((p) => [
+                {
+                  label: `${p.name} (todo)`,
+                  onSelect: () => nav(`/categorias/${p.slug}`),
+                },
+                ...(p.sub || []).map((s) => ({
+                  label: `· ${s.name}`,
+                  onSelect: () => nav(`/categorias/${s.slug}`),
+                })),
+              ]),
+            ]}
+          />
 
           <button
             type="button"
@@ -582,7 +522,7 @@ export default function Navbar() {
           </button>
           <button
             type="button"
-            onClick={() => nav("/help")} // ⬅ CAMBIO AQUÍ
+            onClick={() => nav("/help")}
             className="hover:underline underline-offset-4"
           >
             Ayuda
@@ -598,8 +538,14 @@ export default function Navbar() {
       {/* Móvil: barra compacta + buscador full-width */}
       <div className="sm:hidden border-b border-[rgb(var(--border-rgb))]">
         {/* Fila superior móvil */}
-        <Container className="!max-w-none px-3 py-2 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+        <Container
+          className="
+            !max-w-none px-3 py-2
+            flex flex-wrap items-center justify-between
+            gap-x-2 gap-y-1
+          "
+        >
+          <div className="flex items-center gap-2 min-w-0">
             <Link
               to="/"
               aria-label="Ir al inicio"
@@ -616,16 +562,17 @@ export default function Navbar() {
               onClick={() => nav("/categorias")}
               className="
                 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px]
-                bg-[rgb(var(--card-2-rgb))] border border-[rgb(var(--border-rgb))]
+                border bg-[rgb(var(--card-2-rgb))] border-[rgb(var(--border-rgb))]
                 hover:bg-[rgb(var(--muted-rgb))]
+                font-medium
               "
             >
-              <Menu size={14} />
+              <Menu size={14} className="opacity-80" />
               <span>Categorías</span>
             </button>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <LangSwitcher />
             <CurrencySwitcher />
             <ThemeToggle />
@@ -648,10 +595,10 @@ export default function Navbar() {
           </div>
         </Container>
 
-        {/* Buscador móvil */}
+        {/* Buscador móvil (simple, sin sugerencias) */}
         <Container className="!max-w-none px-3 pb-3 space-y-2">
           <form
-            onSubmit={submit}
+            onSubmit={handleSearchSubmit}
             role="search"
             aria-label="Buscar productos"
             className="flex flex-col gap-2"
@@ -729,7 +676,7 @@ export default function Navbar() {
                     rounded-md
                     bg-[rgb(var(--primary-rgb))]
                     text-[rgb(var(--bg-rgb))]
-                    hover:bg-[rgb(var(--primary-rgb)/0.9))]
+                    hover:bg-[rgb(var(--primary-rgb)/0.9)]
                     text-xs
                   "
                 >
@@ -755,7 +702,7 @@ export default function Navbar() {
               </button>
               <button
                 type="button"
-                onClick={() => nav("/help")} // ⬅ CAMBIO AQUÍ
+                onClick={() => nav("/help")}
                 className="hover:underline underline-offset-4"
               >
                 Ayuda

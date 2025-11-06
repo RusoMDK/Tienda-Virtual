@@ -1,16 +1,27 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { cn } from "../utils/cn";
 
 type Item = { label: string; onSelect: () => void; disabled?: boolean };
+
+type RenderTriggerArgs = {
+  open: boolean;
+  toggle: () => void;
+};
+
+type TriggerProp =
+  | React.ReactNode
+  | ((args: RenderTriggerArgs) => React.ReactNode);
 
 export default function Dropdown({
   trigger,
   items,
   align = "right",
+  fullWidth = false,
 }: {
-  trigger: React.ReactNode;
+  trigger: TriggerProp;
   items: Item[];
   align?: "left" | "right";
+  fullWidth?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -30,15 +41,29 @@ export default function Dropdown({
     };
   }, []);
 
+  const isRenderProp = typeof trigger === "function";
+
   return (
-    <div ref={ref} className="relative inline-block">
-      <div
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
-        {trigger}
-      </div>
+    <div
+      ref={ref}
+      className={cn("relative", fullWidth ? "block w-full" : "inline-block")}
+    >
+      {isRenderProp ? (
+        (trigger as (args: RenderTriggerArgs) => React.ReactNode)({
+          open,
+          toggle: () => setOpen((v) => !v),
+        })
+      ) : (
+        <div
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className="cursor-pointer"
+        >
+          {trigger}
+        </div>
+      )}
+
       {open && (
         <div
           role="menu"
@@ -72,9 +97,3 @@ export default function Dropdown({
     </div>
   );
 }
-
-/* Anim keyframes (añade esto 1 sola vez a tu CSS global si no lo tienes):
-@keyframes dropdownIn {
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-*/

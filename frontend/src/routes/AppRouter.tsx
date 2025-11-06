@@ -64,6 +64,9 @@ import OrdersPage from "@/features/account/pages/OrdersPage";
 import OrderDetailPage from "@/features/account/pages/OrderDetailPage";
 import SecurityPage from "@/features/account/pages/SecurityPage";
 
+//Search
+import SearchPage from "../features/Search/page/SearchPage";
+
 // Infra
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
@@ -221,6 +224,8 @@ export default function AppRouter() {
 
               {/* Catálogo / tienda */}
               <Route path="/tienda" element={<CatalogPage />} />
+
+              <Route path="/search" element={<SearchPage />} />
 
               {/* Públicas */}
               <Route path="/product/:slug" element={<ProductDetailPage />} />

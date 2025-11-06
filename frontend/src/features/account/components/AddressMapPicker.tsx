@@ -1,4 +1,3 @@
-// src/features/account/components/AddressMapPicker.tsx
 import { useEffect, useMemo, useState } from "react";
 import {
   MapContainer,
@@ -6,6 +5,8 @@ import {
   Popup,
   TileLayer,
   useMapEvents,
+  LayersControl,
+  LayerGroup,
 } from "react-leaflet";
 import L from "leaflet";
 import { Input, Button, useToast } from "@/ui";
@@ -42,6 +43,60 @@ function MapClickHandler({
   return null;
 }
 
+// Limites del mapa (oeste hemisferio para que no se vea el mundo repetido)
+const MAP_BOUNDS: [[number, number], [number, number]] = [
+  [-10, -120], // Suroeste
+  [50, -40], // Noreste
+];
+
+// ───────── Capas base (calles / satélite / relieve) ─────────
+function BaseLayersControl() {
+  return (
+    <LayersControl position="bottomright">
+      {/* Callejero principal */}
+      <LayersControl.BaseLayer checked name="Mapa de calles">
+        <TileLayer
+          attribution="&copy; OpenStreetMap contributors"
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxZoom={19}
+        />
+      </LayersControl.BaseLayer>
+
+      {/* Satélite + calles (Esri World Imagery + Transportation + Boundaries) */}
+      <LayersControl.BaseLayer name="Satélite + calles (Esri)">
+        <LayerGroup>
+          <TileLayer
+            attribution="Tiles &copy; Esri"
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            maxZoom={19}
+          />
+          <TileLayer
+            attribution="Roads &copy; Esri, Garmin, HERE, & OpenStreetMap contributors"
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}"
+            maxZoom={19}
+            opacity={0.9}
+          />
+          <TileLayer
+            attribution="Boundaries & places &copy; Esri"
+            url="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+            maxZoom={19}
+            opacity={0.9}
+          />
+        </LayerGroup>
+      </LayersControl.BaseLayer>
+
+      {/* Relieve / topográfico */}
+      <LayersControl.BaseLayer name="Relieve / Topográfico">
+        <TileLayer
+          attribution="Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)"
+          url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
+          maxZoom={17}
+        />
+      </LayersControl.BaseLayer>
+    </LayersControl>
+  );
+}
+
 export default function AddressMapPicker({
   value,
   onChange,
@@ -67,15 +122,56 @@ export default function AddressMapPicker({
   const [locating, setLocating] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
 
-  // Si cambia el value externo (editar dirección), sincronizamos
+  // Estilos minimalistas para los controles nativos de Leaflet
   useEffect(() => {
-    if (value?.lat != null && value?.lng != null) {
-      setCenter([value.lat, value.lng]);
-      setMarker([value.lat, value.lng]);
-      setZoom(15);
-      setLabel(value.label || "");
-    }
-  }, [value?.lat, value?.lng, value?.label]);
+    if (typeof document === "undefined") return;
+    const styleId = "leaflet-minimal-controls-style";
+    if (document.getElementById(styleId)) return;
+
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.innerHTML = `
+      .leaflet-control-zoom,
+      .leaflet-control-layers {
+        border-radius: 9999px;
+        background-color: rgba(15,23,42,0.82);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(148,163,184,0.55);
+        box-shadow: 0 10px 28px rgba(15,23,42,0.7);
+        overflow: hidden;
+      }
+
+      .leaflet-control-zoom a,
+      .leaflet-control-layers-toggle {
+        width: 26px;
+        height: 26px;
+        line-height: 26px;
+        font-size: 13px;
+        color: #e5e7eb;
+        background-color: transparent;
+      }
+
+      .leaflet-control-zoom a:hover,
+      .leaflet-control-layers-toggle:hover {
+        background-color: rgba(15,23,42,0.9);
+        color: #f9fafb;
+      }
+
+      .leaflet-control-layers-expanded {
+        border-radius: 18px;
+      }
+
+      .leaflet-control-layers-list {
+        padding: 6px 8px;
+      }
+
+      .leaflet-control-layers label {
+        font-size: 11px;
+        color: #e5e7eb;
+      }
+    `;
+    document.head.appendChild(style);
+  }, []);
 
   // Icono del marcador: foto del usuario o pin
   const markerIcon = useMemo(
@@ -84,18 +180,18 @@ export default function AddressMapPicker({
         className: "",
         html: `
           <div style="
-            width:32px;
-            height:32px;
+            width:28px;
+            height:28px;
             border-radius:9999px;
             overflow:hidden;
             border:2px solid #10b981;
-            box-shadow:0 6px 16px rgba(15,23,42,0.35);
+            box-shadow:0 6px 18px rgba(15,23,42,0.45);
             background:#10b981;
             display:flex;
             align-items:center;
             justify-content:center;
             color:#fff;
-            font-size:14px;
+            font-size:13px;
           ">
             ${
               (user as any)?.avatarUrl
@@ -106,11 +202,21 @@ export default function AddressMapPicker({
             }
           </div>
         `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 32],
+        iconSize: [28, 28],
+        iconAnchor: [14, 28],
       }),
     [(user as any)?.avatarUrl]
   );
+
+  // Si cambia el value externo (editar dirección), sincronizamos
+  useEffect(() => {
+    if (value?.lat != null && value?.lng != null) {
+      setCenter([value.lat, value.lng]);
+      setMarker([value.lat, value.lng]);
+      setZoom(15);
+      setLabel(value.label || "");
+    }
+  }, [value?.lat, value?.lng, value?.label]);
 
   // ───────── Helpers ─────────
   function applySelection(
@@ -140,7 +246,7 @@ export default function AddressMapPicker({
     (async () => {
       try {
         const res = await api.get("/maps/reverse", {
-          params: { lat, lon: lng }, // 🔧 backend espera "lon"
+          params: { lat, lon: lng }, // backend espera "lon"
         });
         const lbl =
           res.data?.label ||
@@ -170,49 +276,62 @@ export default function AddressMapPicker({
         params: { text: q, limit: 6 },
       });
 
-      const raw =
-        Array.isArray(res.data?.results) && res.data.results.length
-          ? res.data.results
-          : Array.isArray(res.data?.features)
-          ? res.data.features
-          : [];
+      console.log("Autocomplete /maps/autocomplete respuesta:", res.data);
+
+      let raw: any[] = [];
+
+      if (Array.isArray(res.data?.results)) {
+        raw = res.data.results;
+      } else if (Array.isArray(res.data?.features)) {
+        raw = res.data.features;
+      } else if (Array.isArray(res.data)) {
+        raw = res.data;
+      } else if (res.data?.result) {
+        raw = [res.data.result];
+      }
 
       const mapped: Suggestion[] = raw
         .map((r: any, idx: number) => {
           const props = r.properties || r;
-          const lat =
+
+          const latRaw =
             props.lat ??
             props.latitude ??
             r.lat ??
             r.geometry?.coordinates?.[1];
-          const lng =
+          const lngRaw =
             props.lon ??
             props.longitude ??
             r.lon ??
             r.geometry?.coordinates?.[0];
 
+          const latNum = Number(latRaw);
+          const lngNum = Number(lngRaw);
+
           const labelText =
             props.formatted ||
             props.label ||
             props.name ||
-            `${lat?.toFixed?.(5) || ""}, ${lng?.toFixed?.(5) || ""}`;
+            `${Number.isFinite(latNum) ? latNum.toFixed(5) : ""}, ${
+              Number.isFinite(lngNum) ? lngNum.toFixed(5) : ""
+            }`;
 
           return {
             id:
               props.place_id?.toString() ||
               props.osm_id?.toString() ||
-              `${lat},${lng}` ||
+              `${latRaw},${lngRaw}` ||
               String(idx),
             label: labelText,
-            lat,
-            lng,
+            lat: latNum,
+            lng: lngNum,
           } as Suggestion;
         })
         .filter(
           (s) =>
-            typeof s.lat === "number" &&
+            Number.isFinite(s.lat) &&
             !Number.isNaN(s.lat) &&
-            typeof s.lng === "number" &&
+            Number.isFinite(s.lng) &&
             !Number.isNaN(s.lng)
         );
 
@@ -262,12 +381,20 @@ export default function AddressMapPicker({
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLocating(false);
+
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
+
+        console.log("[Geoloc] coords:", {
+          lat,
+          lng,
+          accuracy: pos.coords.accuracy,
+        });
+
         applySelection(lat, lng, "Mi ubicación aproximada", true);
       },
       (err) => {
-        console.error(err);
+        console.error("Error geolocalización:", err);
         setLocating(false);
         toast({
           title: "No se pudo obtener tu ubicación",
@@ -276,8 +403,9 @@ export default function AddressMapPicker({
         });
       },
       {
-        enableHighAccuracy: false,
-        timeout: 10000,
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 60000,
       }
     );
   }
@@ -291,10 +419,14 @@ export default function AddressMapPicker({
         onClick={() => setFullscreen(true)}
         className="
           absolute right-2 top-2 z-[600]
-          inline-flex items-center gap-1 rounded-lg bg-[rgb(var(--card-rgb))]
-          border border-[rgb(var(--border-rgb))]
-          px-2 py-1 text-[11px] shadow-sm
-          hover:bg-[rgb(var(--card-2-rgb))]
+          inline-flex items-center justify-center gap-1
+          rounded-full bg-black/55 backdrop-blur-sm
+          border border-white/10
+          px-1.5 py-1 text-[10px] font-medium
+          text-slate-50/90
+          shadow-lg
+          hover:bg-black/75 hover:text-white
+          transition-colors transition-shadow
         "
       >
         <Maximize2 size={14} />
@@ -307,12 +439,16 @@ export default function AddressMapPicker({
         onClick={handleUseMyLocation}
         disabled={locating}
         className="
-          absolute left-2 top-2 z-[600]
-          inline-flex items-center gap-1.5
-          rounded-full bg-[rgb(var(--card-rgb))]
-          border border-[rgb(var(--border-rgb))]
-          px-2 py-1.5 text-[11px] shadow-sm
-          hover:bg-[rgb(var(--card-2-rgb))]
+          absolute left-2 bottom-2 z-[600]
+          inline-flex items-center justify-center gap-1
+          rounded-full bg-black/55 backdrop-blur-sm
+          border border-white/10
+          px-2 py-1.5 text-[10px] font-medium
+          text-slate-50/90
+          shadow-lg
+          hover:bg-black/75 hover:text-white
+          disabled:opacity-60 disabled:cursor-not-allowed
+          transition-colors transition-shadow
         "
       >
         <Crosshair size={14} />
@@ -322,13 +458,14 @@ export default function AddressMapPicker({
       <MapContainer
         center={center as any}
         zoom={zoom}
-        className="h-64 w-full rounded-xl border border-[rgb(var(--border-rgb))] overflow-hidden"
+        minZoom={4}
+        maxZoom={18}
+        maxBounds={MAP_BOUNDS as any}
+        maxBoundsViscosity={0.9}
+        className="h-56 md:h-64 w-full rounded-xl border border-[rgb(var(--border-rgb))] overflow-hidden"
         scrollWheelZoom={false}
       >
-        <TileLayer
-          attribution="&copy; OpenStreetMap contributors"
-          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <BaseLayersControl />
         <MapClickHandler onSelect={handleMapClick} />
         {marker && (
           <Marker position={marker as any} icon={markerIcon}>
@@ -341,13 +478,20 @@ export default function AddressMapPicker({
 
   // ───────── Mapa fullscreen ─────────
   const fullscreenNode = !fullscreen ? null : (
-    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 px-3">
+    <div className="fixed inset-0 z-[2500] flex items-center justify-center bg-black/60 px-3">
       <div className="relative w-full max-w-5xl rounded-2xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] shadow-2xl p-3 md:p-4">
         {/* Cerrar modal */}
         <button
           type="button"
           onClick={() => setFullscreen(false)}
-          className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black/85"
+          className="
+            absolute right-3 top-3
+            inline-flex h-7 w-7 items-center justify-center
+            rounded-full bg-black/65 text-white/85
+            hover:bg-black/85 hover:text-white
+            shadow-md
+            transition-colors
+          "
         >
           <X size={16} />
         </button>
@@ -362,7 +506,14 @@ export default function AddressMapPicker({
             variant="outline"
             onClick={handleUseMyLocation}
             disabled={locating}
-            className="inline-flex items-center gap-1 text-xs self-start"
+            className="
+              inline-flex items-center gap-1
+              rounded-full border-[rgb(var(--border-rgb))]
+              bg-transparent
+              px-3 py-1.5 text-[11px] font-medium
+              hover:bg-[rgb(var(--card-2-rgb))]
+              disabled:opacity-60 disabled:cursor-not-allowed
+            "
           >
             <Crosshair size={14} />
             {locating ? "Obteniendo ubicación…" : "Usar mi ubicación"}
@@ -372,13 +523,14 @@ export default function AddressMapPicker({
         <MapContainer
           center={center as any}
           zoom={zoom}
+          minZoom={4}
+          maxZoom={18}
+          maxBounds={MAP_BOUNDS as any}
+          maxBoundsViscosity={0.9}
           className="h-[70vh] w-full rounded-xl border border-[rgb(var(--border-rgb))] overflow-hidden"
           scrollWheelZoom
         >
-          <TileLayer
-            attribution="&copy; OpenStreetMap contributors"
-            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          <BaseLayersControl />
           <MapClickHandler onSelect={handleMapClick} />
           {marker && (
             <Marker position={marker as any} icon={markerIcon}>
@@ -407,13 +559,17 @@ export default function AddressMapPicker({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar dirección, barrio, ciudad…"
-          className="h-9 text-xs sm:text-sm"
+          className="h-9 text-xs sm:text-sm rounded-full"
         />
         <Button
           type="submit"
           size="sm"
           disabled={loadingSearch}
-          className="whitespace-nowrap"
+          className="
+            h-9 px-3 text-xs font-medium
+            rounded-full
+            shadow-sm
+          "
         >
           {loadingSearch ? "Buscando…" : "Buscar"}
         </Button>
@@ -421,13 +577,17 @@ export default function AddressMapPicker({
 
       {/* Resultados */}
       {suggestions.length > 0 && (
-        <div className="max-h-40 overflow-auto rounded-lg border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] text-xs">
+        <div className="max-h-40 overflow-auto rounded-xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] text-xs">
           {suggestions.map((s) => (
             <button
               key={s.id}
               type="button"
               onClick={() => handleSelectSuggestion(s)}
-              className="block w-full px-3 py-2 text-left hover:bg-[rgb(var(--card-2-rgb))]"
+              className="
+                block w-full px-3 py-2 text-left
+                hover:bg-[rgb(var(--card-2-rgb))]
+                transition-colors
+              "
             >
               {s.label}
             </button>
@@ -435,7 +595,7 @@ export default function AddressMapPicker({
         </div>
       )}
 
-      {/* Mapa pequeño (solo cuando no está en fullscreen) */}
+      {/* Mapa pequeño */}
       {!fullscreen && compactMap}
 
       {/* Mapa ampliado */}

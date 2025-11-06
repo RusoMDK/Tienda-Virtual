@@ -75,3 +75,53 @@
 .user-marker--initials {
   letter-spacing: 0.03em;
 }
+
+/* ⬇⬇⬇ AÑADE ESTO AL FINAL: estilos del slider de precio ⬇⬇⬇ */
+
+/* Slider de precio bonito */
+input[type="range"].price-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 0;
+}
+
+input[type="range"].price-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: rgb(var(--primary-rgb));
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+  margin-top: -7px; /* centra el thumb en el track */
+}
+
+input[type="range"].price-range::-webkit-slider-thumb:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.18);
+}
+
+input[type="range"].price-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: rgb(var(--primary-rgb));
+  border: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+input[type="range"].price-range::-moz-range-thumb:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.18);
+}
+
+input[type="range"].price-range::-moz-range-track {
+  background: transparent;
+}
+
+@keyframes fadeIn { to { opacity: 1; } }
+@keyframes dialogIn { to { opacity: 1; transform: translateY(0) scale(1); } }
