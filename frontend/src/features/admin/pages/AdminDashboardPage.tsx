@@ -112,14 +112,14 @@ function SectionCard({
 
 /* ───────────────── página ───────────────── */
 export default function AdminDashboardPage() {
-  // Summary
+  // Summary global
   const { data: summary, isLoading: sumLoading } = useQuery({
     queryKey: ["admin:summary"],
     queryFn: adminSummary,
     staleTime: 60_000,
   });
 
-  // Últimas órdenes (para tabla y serie)
+  // Últimas órdenes (para tabla y métricas)
   const { data: ordersResp, isLoading: ordersLoading } = useQuery({
     queryKey: ["admin:orders", { page: 1, pageSize: 100 }],
     queryFn: () =>
@@ -146,6 +146,14 @@ export default function AdminDashboardPage() {
     staleTime: 30_000,
   });
 
+  const orders = ordersResp?.items ?? [];
+
+  // Órdenes pagadas / cumplidas
+  const paidOrders = useMemo(
+    () => orders.filter((o) => o.status === "PAID" || o.status === "FULFILLED"),
+    [orders]
+  );
+
   // Serie de ingresos últimos 14 días
   const revenueSeries = useMemo(() => {
     const days = daysBack(14);
@@ -155,40 +163,89 @@ export default function AdminDashboardPage() {
       total: 0,
     }));
 
-    const items = ordersResp?.items ?? [];
-    for (const o of items) {
+    for (const o of paidOrders) {
       const d = new Date(o.createdAt);
       d.setHours(0, 0, 0, 0);
       const key = d.getTime();
       const bucket = buckets.find((b) => b.key === key);
-      if (bucket && (o.status === "PAID" || o.status === "FULFILLED")) {
+      if (bucket) {
         bucket.total += o.total || 0;
       }
     }
+
     return buckets.map((b) => ({
       name: b.label,
+      // pasamos a unidades (sin centavos) para el gráfico
       value: Math.round(b.total / 100),
     }));
-  }, [ordersResp]);
+  }, [paidOrders]);
 
-  // KPIs
+  // KPIs derivados
   const revenueTotal = useMemo(() => {
-    const sum = (ordersResp?.items ?? [])
-      .filter((o) => o.status === "PAID" || o.status === "FULFILLED")
-      .reduce((acc, o) => acc + (o.total || 0), 0);
+    const sum = paidOrders.reduce((acc, o) => acc + (o.total || 0), 0);
     return centsToStr(sum);
-  }, [ordersResp]);
+  }, [paidOrders]);
+
+  const revenueLast7 = useMemo(() => {
+    const now = new Date();
+    const since = new Date();
+    since.setDate(now.getDate() - 6); // hoy + 6 días atrás
+    since.setHours(0, 0, 0, 0);
+
+    let total = 0;
+    for (const o of paidOrders) {
+      const d = new Date(o.createdAt);
+      if (d >= since && d <= now) {
+        total += o.total || 0;
+      }
+    }
+    return {
+      raw: total,
+      label: centsToStr(total),
+    };
+  }, [paidOrders]);
+
+  const revenueToday = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let total = 0;
+    let count = 0;
+    for (const o of paidOrders) {
+      const d = new Date(o.createdAt);
+      const sameDay =
+        d.getFullYear() === today.getFullYear() &&
+        d.getMonth() === today.getMonth() &&
+        d.getDate() === today.getDate();
+      if (sameDay) {
+        total += o.total || 0;
+        count++;
+      }
+    }
+    return {
+      raw: total,
+      label: centsToStr(total),
+      count,
+    };
+  }, [paidOrders]);
+
+  const averageTicket = useMemo(() => {
+    if (!paidOrders.length) return "—";
+    const total = paidOrders.reduce((acc, o) => acc + (o.total || 0), 0);
+    return centsToStr(Math.round(total / paidOrders.length));
+  }, [paidOrders]);
 
   const lowStock = useMemo(() => {
     const list = lowStockResp?.items ?? [];
     return list.filter((p) => p.stock <= 3).slice(0, 8);
   }, [lowStockResp]);
 
+  const kpisLoading = sumLoading || ordersLoading;
+
   return (
     <div className="space-y-6">
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {sumLoading ? (
+      {/* KPIs principales */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {kpisLoading ? (
           <>
             <Skeleton className="h-28 w-full" />
             <Skeleton className="h-28 w-full" />
@@ -198,7 +255,7 @@ export default function AdminDashboardPage() {
         ) : (
           <>
             <StatTile
-              label="Productos"
+              label="Productos activos"
               value={summary?.products ?? 0}
               icon={<Package size={18} />}
               footer={
@@ -211,8 +268,8 @@ export default function AdminDashboardPage() {
               }
             />
             <StatTile
-              label="Órdenes"
-              value={summary?.orders ?? 0}
+              label="Órdenes totales"
+              value={summary?.orders ?? orders.length}
               icon={<ShoppingCart size={18} />}
               footer={
                 <span className="opacity-70">
@@ -226,10 +283,65 @@ export default function AdminDashboardPage() {
               icon={<Users size={18} />}
             />
             <StatTile
-              label="Ingresos (total listado)"
+              label="Ingresos totales (listado)"
               value={revenueTotal}
               icon={<Banknote size={18} />}
               footer={<span className="opacity-70">PAID / FULFILLED</span>}
+            />
+          </>
+        )}
+      </div>
+
+      {/* KPIs de ingresos (hoy / 7d / ticket medio) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {kpisLoading ? (
+          <>
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </>
+        ) : (
+          <>
+            <StatTile
+              label="Ingresos de hoy"
+              value={revenueToday.label}
+              icon={<Banknote size={18} />}
+              footer={
+                <span className="opacity-70">
+                  {revenueToday.count} orden
+                  {revenueToday.count === 1 ? "" : "es"}
+                </span>
+              }
+            />
+            <StatTile
+              label="Ingresos últimos 7 días"
+              value={revenueLast7.label}
+              icon={<Banknote size={18} />}
+              footer={
+                <span className="opacity-70">
+                  Equivalente a{" "}
+                  <b>
+                    {paidOrders.length
+                      ? `${Math.round(
+                          (revenueLast7.raw || 0) /
+                            Math.max(1, Math.min(7, daysBack(7).length)) /
+                            100
+                        ).toLocaleString("es-ES")} USD/día`
+                      : "—"}
+                  </b>
+                </span>
+              }
+            />
+            <StatTile
+              label="Ticket medio"
+              value={averageTicket}
+              icon={<ShoppingCart size={18} />}
+              footer={
+                <span className="opacity-70">
+                  Sobre {paidOrders.length} orden
+                  {paidOrders.length === 1 ? "" : "es"} completadas
+                </span>
+              }
             />
           </>
         )}
@@ -245,6 +357,10 @@ export default function AdminDashboardPage() {
             <div className="h-64">
               {ordersLoading ? (
                 <Skeleton className="h-full w-full" />
+              ) : paidOrders.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-sm opacity-70">
+                  Aún no hay datos suficientes para el gráfico.
+                </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={revenueSeries}>
@@ -351,8 +467,7 @@ export default function AdminDashboardPage() {
         title="Últimas órdenes"
         hint={
           <span className="text-xs opacity-60">
-            Mostrando {Math.min(ordersResp?.items.length || 0, 10)} de{" "}
-            {ordersResp?.items.length || 0}
+            Mostrando {Math.min(orders.length || 0, 10)} de {orders.length || 0}
           </span>
         }
       >
@@ -374,7 +489,7 @@ export default function AdminDashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {(ordersResp?.items ?? []).slice(0, 10).map((o) => (
+                {orders.slice(0, 10).map((o) => (
                   <tr
                     key={o.id}
                     className="border-t border-[var(--border)] hover:bg-[var(--surface-1)]/60"
@@ -397,10 +512,12 @@ export default function AdminDashboardPage() {
                         {o.status}
                       </Badge>
                     </td>
-                    <td className="p-3 text-right">{centsToStr(o.total)}</td>
+                    <td className="p-3 text-right">
+                      {centsToStr(o.total || 0)}
+                    </td>
                   </tr>
                 ))}
-                {!(ordersResp?.items?.length ?? 0) && (
+                {!(orders.length ?? 0) && (
                   <tr>
                     <td colSpan={4} className="p-6 text-center opacity-70">
                       Sin órdenes recientes

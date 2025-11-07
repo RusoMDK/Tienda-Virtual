@@ -1,4 +1,3 @@
-// src/features/products/pages/ProductDetailPage.tsx
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -19,6 +18,7 @@ import {
   type ProductDTO,
 } from "@/features/products/api";
 import { Price } from "@/features/currency/Price";
+import { ProductCardMinimal } from "@/features/products/components/ProductCardMinimal";
 
 // ───────────────────────── helpers imágenes
 function normalizeImageEntry(x: any): string | null {
@@ -28,7 +28,6 @@ function normalizeImageEntry(x: any): string | null {
   return null;
 }
 function collectProductImages(p: ProductDTO): string[] {
-  // Preferimos siempre las que vienen del backend
   const candidates: any[] =
     (p as any).images ??
     (p as any).photos ??
@@ -38,11 +37,10 @@ function collectProductImages(p: ProductDTO): string[] {
   const arr = Array.isArray(candidates)
     ? (candidates.map(normalizeImageEntry).filter(Boolean) as string[])
     : [];
-  // Si no hay ninguna, ponemos solo un placeholder
   return arr.length > 0 ? arr : ["https://placehold.co/1200x900?text=Sin+foto"];
 }
 
-// ─────────────────────────────────── Galería (igual que la tuya)
+// ─────────────────────────────────── Galería
 function ImageGallery({ name, images }: { name: string; images: string[] }) {
   const [idx, setIdx] = useState(0);
   const [zooming, setZooming] = useState(false);
@@ -231,7 +229,6 @@ export default function ProductDetailPage() {
     queryKey: ["product+related", slug],
     queryFn: async () => {
       if (!slug) throw new Error("Missing slug");
-      // asegúrate que getProductWithRelated devuelva product.images (string[])
       return getProductWithRelated(slug, { relatedLimit: 6 });
     },
     enabled: !!slug,
@@ -415,7 +412,7 @@ export default function ProductDetailPage() {
 
           <div className="flex items-center gap-3">
             <div className="text-2xl font-semibold">
-              <Price cents={p.price} currency="USD" />
+              <Price cents={p.price} currency={p.currency || "USD"} />
             </div>
             {!p.active ? (
               <Badge>No disponible</Badge>
@@ -524,39 +521,22 @@ export default function ProductDetailPage() {
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {data.related.slice(0, 6).map((r: any) => {
-              const first =
+              const firstImage =
                 (Array.isArray(r.images) && r.images[0]) ||
                 r.imageUrl ||
                 "https://placehold.co/600x450?text=Sin+foto";
+
               return (
-                <Link
+                <ProductCardMinimal
                   key={r.id}
                   to={`/product/${r.slug}`}
-                  className="group rounded-2xl bg-[var(--card)] border border-[var(--border)] overflow-hidden hover:-translate-y-0.5 hover:shadow-md transition"
-                  title={r.name}
-                >
-                  <div className="aspect-[4/3] w-full overflow-hidden">
-                    <img
-                      src={first}
-                      alt={r.name}
-                      className="h-full w-full object-cover group-hover:opacity-95"
-                      loading="lazy"
-                      decoding="async"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src =
-                          "https://placehold.co/600x450?text=Sin+foto";
-                      }}
-                    />
-                  </div>
-                  <div className="p-3">
-                    <div className="text-sm font-medium line-clamp-2">
-                      {r.name}
-                    </div>
-                    <div className="text-xs opacity-70 mt-0.5">
-                      <Price cents={r.price} currency="USD" />
-                    </div>
-                  </div>
-                </Link>
+                  name={r.name}
+                  priceCents={r.price}
+                  currency={r.currency || "USD"}
+                  imageUrl={firstImage}
+                  variant="compact"
+                  aspect="landscape"
+                />
               );
             })}
           </div>

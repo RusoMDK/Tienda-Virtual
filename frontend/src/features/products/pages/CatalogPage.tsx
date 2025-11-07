@@ -1,19 +1,19 @@
 import { useMemo, useState, useEffect, useRef } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import CategoryBar from "@/features/categories/components/CategoryBar";
 import SubcategoryCarousel from "@/features/categories/components/SubcategoryCarousel";
 import { fetchCategories, type CategoryNode } from "@/features/categories/api";
 import { Skeleton } from "@/ui";
-import { Price } from "@/features/currency/Price";
+import { ProductCardMinimal } from "@/features/products/components/ProductCardMinimal";
 
 type CatalogItem = {
   id: string;
   slug: string;
   name: string;
   description: string;
-  price: number; // cents USD
+  price: number; // cents
   currency: string;
   stock: number;
   active: boolean;
@@ -24,16 +24,17 @@ type CatalogItem = {
 export default function CatalogPage() {
   const [sp, setSp] = useSearchParams();
 
-  // Query params
   const page = Number(sp.get("page") || 1);
   const pageSize = Number(sp.get("pageSize") || 12);
   const q = sp.get("q") || "";
   const sort = (sp.get("sort") as any) || "createdAt:desc";
   const catParam = sp.get("cat") || "";
 
+  // densidad: compact = mini cards / comfortable = un poco más grandes
+  const [density, setDensity] = useState<"compact" | "comfortable">("compact");
+
   const catalogRef = useRef<HTMLDivElement | null>(null);
 
-  // Categorías
   const { data: categories = [], isLoading: loadingCats } = useQuery<
     CategoryNode[]
   >({
@@ -42,25 +43,20 @@ export default function CatalogPage() {
     staleTime: 5 * 60_000,
   });
 
-  // Padres (excluye "all")
   const parents = useMemo(
     () => (categories || []).filter((c) => c.slug !== "all"),
     [categories]
   );
 
-  // ¿catParam es un padre?
   const isParentSlug = useMemo(() => {
     if (!catParam) return true;
     return !!parents.find((c) => c.slug === catParam);
   }, [catParam, parents]);
 
-  // Primer padre como fallback
   const firstParent = parents[0];
 
-  // parentSlug controlado
   const [parentSlug, setParentSlug] = useState<string>("");
 
-  // Sincroniza parentSlug cuando llegan categorías o cambia catParam
   useEffect(() => {
     if (!parents.length) return;
     if (!catParam) {
@@ -74,13 +70,11 @@ export default function CatalogPage() {
     setParentSlug(parent?.slug || firstParent?.slug || "");
   }, [catParam, parents, firstParent?.slug]);
 
-  // Padre activo resuelto SIEMPRE
   const resolvedParent = useMemo(() => {
     if (!parents.length) return undefined;
     return parents.find((p) => p.slug === parentSlug) || firstParent;
   }, [parents, parentSlug, firstParent]);
 
-  // Productos (lista) → category/subcategory según catParam
   const { data, isLoading, isError } = useQuery({
     queryKey: ["products", { page, pageSize, q, sort, catParam }],
     queryFn: async () => {
@@ -145,11 +139,8 @@ export default function CatalogPage() {
 
   const controlClass =
     "rounded-xl px-3 py-2 text-sm bg-[var(--surface-1)] border border-[var(--border)] text-[var(--text)] outline-none focus:ring-2 focus:ring-[var(--ring)] focus:border-[var(--ring)] transition";
-  const cardClass =
-    "group rounded-2xl bg-[var(--card)] border border-[var(--border)] overflow-hidden hover:-translate-y-0.5 hover:shadow-md transition";
   const subtleBorder = "border border-[var(--border)]";
 
-  // ITEMS CARRUSEL — siempre al menos la tarjeta "Todo <padre>"
   const carouselItems = useMemo(() => {
     if (!resolvedParent) return [];
     const parentCover =
@@ -171,6 +162,12 @@ export default function CatalogPage() {
     ];
   }, [resolvedParent]);
 
+  // clases del grid según densidad
+  const gridClass =
+    density === "compact"
+      ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-3"
+      : "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4";
+
   return (
     <div>
       {!loadingCats && parents.length > 0 && (
@@ -181,7 +178,6 @@ export default function CatalogPage() {
         />
       )}
 
-      {/* CARRUSEL: visible si hay al menos 1 padre */}
       {!loadingCats && parents.length > 0 && (
         <SubcategoryCarousel
           items={carouselItems}
@@ -194,14 +190,15 @@ export default function CatalogPage() {
       )}
 
       <div ref={catalogRef} className="container py-6 space-y-6 scroll-mt-24">
-        <div className="flex items-center justify-between gap-3">
+        {/* Header catálogo + controles */}
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <h2 className="text-xl font-semibold">
             {isSubcategory
               ? `Ofertas — ${currentCategoryName}`
               : currentCategoryName}
           </h2>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 justify-end">
             <select
               className={controlClass}
               value={sort}
@@ -232,20 +229,42 @@ export default function CatalogPage() {
                 </option>
               ))}
             </select>
+
+            {/* Toggle densidad */}
+            <div className="inline-flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-[2px] text-xs">
+              <button
+                type="button"
+                onClick={() => setDensity("compact")}
+                className={cnDensity(density === "compact")}
+              >
+                Compacta
+              </button>
+              <button
+                type="button"
+                onClick={() => setDensity("comfortable")}
+                className={cnDensity(density === "comfortable")}
+              >
+                Cómoda
+              </button>
+            </div>
           </div>
         </div>
 
         {isLoading && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className={gridClass}>
             {Array.from({ length: Math.min(pageSize, 12) }).map((_, i) => (
               <div
                 key={i}
                 className={`rounded-2xl ${subtleBorder} bg-[var(--card)] overflow-hidden`}
               >
-                <Skeleton className="aspect-[4/3]" />
-                <div className="p-3 space-y-2">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-4 w-1/2" />
+                <Skeleton
+                  className={
+                    density === "compact" ? "aspect-square" : "aspect-[4/3]"
+                  }
+                />
+                <div className="p-2.5 space-y-2">
+                  <Skeleton className="h-3 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
                 </div>
               </div>
             ))}
@@ -267,42 +286,28 @@ export default function CatalogPage() {
         )}
 
         {!isLoading && !!data?.items?.length && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {data.items.map((p) => (
-              <Link
-                key={p.id}
-                to={`/product/${p.slug}`}
-                className={cardClass}
-                title={p.name}
-              >
-                <div className="aspect-[4/3] w-full overflow-hidden">
-                  <img
-                    src={
-                      p.imageUrl ?? "https://placehold.co/800x600?text=Sin+foto"
-                    }
-                    alt={p.name}
-                    className="h-full w-full object-cover group-hover:opacity-95"
-                    loading="lazy"
-                    decoding="async"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src =
-                        "https://placehold.co/800x600?text=Sin+foto";
-                    }}
-                  />
-                </div>
-                <div className="p-3">
-                  <div className="text-sm font-semibold leading-snug line-clamp-2">
-                    {p.name}
-                  </div>
-                  <div className="text-xs opacity-70 mt-1 line-clamp-2">
-                    {p.description}
-                  </div>
-                  <div className="text-sm font-semibold mt-2">
-                    <Price cents={p.price} currency="USD" />
-                  </div>
-                </div>
-              </Link>
-            ))}
+          <div className={gridClass}>
+            {data.items.map((p) => {
+              let badge: string | null = null;
+              if (!p.active) badge = "No disponible";
+              else if (p.stock === 0) badge = "Sin stock";
+              else if (p.stock > 0 && p.stock <= 3) badge = `Quedan ${p.stock}`;
+
+              return (
+                <ProductCardMinimal
+                  key={p.id}
+                  to={`/product/${p.slug}`}
+                  name={p.name}
+                  description={p.description}
+                  priceCents={p.price}
+                  currency={p.currency}
+                  imageUrl={p.imageUrl}
+                  badge={badge}
+                  variant={density === "compact" ? "compact" : "grid"}
+                  aspect={density === "compact" ? "square" : "landscape"}
+                />
+              );
+            })}
           </div>
         )}
 
@@ -344,4 +349,14 @@ export default function CatalogPage() {
       </div>
     </div>
   );
+}
+
+/** small helper local para el toggle de densidad */
+function cnDensity(active: boolean) {
+  return [
+    "px-2.5 py-1 rounded-lg transition text-[11px]",
+    active
+      ? "bg-[var(--accent)] text-black"
+      : "bg-transparent text-[var(--text-muted)] hover:bg-[var(--surface-2)]",
+  ].join(" ");
 }

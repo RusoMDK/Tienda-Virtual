@@ -1,3 +1,4 @@
+// src/features/admin/pages/AdminProductEditorPage.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -422,7 +423,7 @@ export default function AdminProductEditorPage() {
           )}
         </div>
 
-        {/* Lateral imágenes (sticky) */}
+        {/* Lateral imágenes (sticky en desktop) */}
         <div className="md:col-span-5 space-y-5 lg:sticky lg:top-20 self-start">
           <section className="rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] p-5 space-y-3">
             <div className="flex items-center justify-between">

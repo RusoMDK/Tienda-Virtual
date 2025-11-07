@@ -271,7 +271,7 @@ export default function AdminProductImportPage() {
     : 0;
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 space-y-5">
       {/* Uploader */}
       <div className="rounded-2xl border border-zinc-800 bg-[var(--card)] p-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -435,6 +435,13 @@ export default function AdminProductImportPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* Progreso numérico simple (por si lo quieres usar en algún sitio) */}
+          {loading && progress > 0 && (
+            <div className="text-xs opacity-60">
+              Progreso aproximado: {progress}%
             </div>
           )}
         </div>

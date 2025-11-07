@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
@@ -37,6 +37,19 @@ import type { CategoryNode } from "@/features/categories/api";
    Tipos auxiliares
    ========================= */
 
+type HeroVariant = "single" | "carousel";
+
+type HeroSlide = {
+  id: string;
+  title: string;
+  subtitle: string;
+  imageUrl: string;
+  ctaLabel: string;
+  ctaHref: string;
+};
+
+const createSlideId = () => `slide_${Math.random().toString(36).slice(2, 9)}`;
+
 type ProductMode = "LATEST" | "BY_CATEGORY" | "BEST_SELLERS";
 
 type ProductLayoutVariant =
@@ -53,12 +66,15 @@ type BannerTone = "brand" | "soft" | "dark";
 type TextAlign = "left" | "center" | "right";
 
 const SECTION_TYPES: { value: HomeSectionType; label: string }[] = [
-  { value: "HERO", label: "Hero principal" },
-  { value: "PRODUCT_GRID", label: "Grid de productos" },
-  { value: "PRODUCT_STRIP", label: "Tira horizontal" },
-  { value: "CATEGORY_STRIP", label: "Tira de categorías" },
-  { value: "BANNER", label: "Banner" },
-  { value: "TEXT_BLOCK", label: "Bloque de texto" },
+  { value: "HERO", label: "Cabecera de inicio (banner grande)" },
+  { value: "PRODUCT_GRID", label: "Bloque de productos (cuadrícula)" },
+  {
+    value: "PRODUCT_STRIP",
+    label: "Fila de productos (scroll horizontal)",
+  },
+  { value: "CATEGORY_STRIP", label: "Fila / carrusel de categorías" },
+  { value: "BANNER", label: "Mensaje destacado / banner" },
+  { value: "TEXT_BLOCK", label: "Bloque de texto informativo" },
 ];
 
 type Draft = {
@@ -69,17 +85,24 @@ type Draft = {
   subtitle: string;
   active: boolean;
 
-  // HERO
+  // CABECERA / HERO
   heroCtaLabel: string;
   heroCtaHref: string;
   heroShowSearch: boolean;
   heroBackgroundUrl: string;
+  heroVariant: HeroVariant;
+  heroSlides: HeroSlide[];
+  heroOverlapNext: boolean;
 
   // PRODUCT GRID / STRIP
   prodMode: ProductMode;
   prodCategorySlug: string;
   prodLimit: number;
   prodLayoutVariant: ProductLayoutVariant;
+  prodLayoutStyle: "panel" | "floating-panel";
+  prodCardShape: "square" | "portrait";
+  prodDensity: "compact" | "comfortable";
+  prodRailStyle: "tight" | "default";
   prodShowAddToCart: boolean;
   prodShowRating: boolean;
 
@@ -108,11 +131,18 @@ const EMPTY_DRAFT: Draft = {
   heroCtaHref: "/tienda",
   heroShowSearch: true,
   heroBackgroundUrl: "",
+  heroVariant: "single",
+  heroSlides: [],
+  heroOverlapNext: false,
 
   prodMode: "LATEST",
   prodCategorySlug: "",
   prodLimit: 8,
   prodLayoutVariant: "grid-3",
+  prodLayoutStyle: "panel",
+  prodCardShape: "portrait",
+  prodDensity: "comfortable",
+  prodRailStyle: "default",
   prodShowAddToCart: true,
   prodShowRating: false,
 
@@ -156,8 +186,8 @@ function flattenCategories(
 function sectionToDraft(section: HomeSection | null): Draft {
   if (!section) return { ...EMPTY_DRAFT };
 
-  const cfg = (section as any).config ?? {};
-  const layout = (section as any).layout ?? {};
+  const cfg: any = (section as any).config ?? {};
+  const layout: any = (section as any).layout ?? {};
 
   const base: Draft = {
     ...EMPTY_DRAFT,
@@ -171,6 +201,23 @@ function sectionToDraft(section: HomeSection | null): Draft {
 
   switch (section.type) {
     case "HERO": {
+      const slidesCfg = Array.isArray(cfg.slides) ? cfg.slides : [];
+      const slides: HeroSlide[] = slidesCfg.map((s: any, index: number) => ({
+        id: s.id || `${section.id}-slide-${index}`,
+        title: s.title ?? section.title ?? "",
+        subtitle: s.subtitle ?? section.subtitle ?? "",
+        imageUrl:
+          s.imageUrl ||
+          s.backgroundImageUrl ||
+          s.image?.url ||
+          cfg.backgroundImageUrl ||
+          "",
+        ctaLabel: s.ctaLabel ?? cfg.ctaLabel ?? "Ver catálogo",
+        ctaHref: s.ctaHref ?? cfg.ctaHref ?? "/tienda",
+      }));
+
+      const hasCarousel = slides.length > 0;
+
       return {
         ...base,
         heroCtaLabel: cfg.ctaLabel ?? "Ver catálogo",
@@ -178,11 +225,17 @@ function sectionToDraft(section: HomeSection | null): Draft {
         heroShowSearch: cfg.showSearch ?? true,
         heroBackgroundUrl:
           cfg.backgroundImage?.url ?? cfg.backgroundImageUrl ?? "",
+        heroVariant: hasCarousel ? "carousel" : "single",
+        heroSlides: slides,
+        heroOverlapNext: !!layout.overlapNext,
       };
     }
 
     case "PRODUCT_GRID":
     case "PRODUCT_STRIP": {
+      const isGrid = section.type === "PRODUCT_GRID";
+      const isStrip = section.type === "PRODUCT_STRIP";
+
       return {
         ...base,
         prodMode: (cfg.mode as ProductMode) ?? "LATEST",
@@ -190,7 +243,17 @@ function sectionToDraft(section: HomeSection | null): Draft {
         prodLimit: typeof cfg.limit === "number" ? cfg.limit : 8,
         prodLayoutVariant:
           (layout.variant as ProductLayoutVariant) ??
-          (section.type === "PRODUCT_GRID" ? "grid-3" : "strip-md"),
+          (isGrid ? "grid-3" : "strip-md"),
+        prodLayoutStyle:
+          (layout.style as "panel" | "floating-panel") ?? "panel",
+        prodCardShape:
+          (layout.cardShape as "square" | "portrait") ??
+          (isGrid ? "square" : "portrait"),
+        prodDensity:
+          (layout.density as "compact" | "comfortable") ?? "comfortable",
+        prodRailStyle:
+          (layout.railStyle as "tight" | "default") ??
+          (isStrip ? "tight" : "default"),
         prodShowAddToCart: layout.showAddToCart ?? true,
         prodShowRating: layout.showRating ?? false,
       };
@@ -234,16 +297,38 @@ function draftToPayload(draft: Draft) {
 
   switch (draft.type) {
     case "HERO": {
-      config = {
+      const baseCfg = {
         mode: "STATIC",
         ctaLabel: draft.heroCtaLabel || "Ver catálogo",
         ctaHref: draft.heroCtaHref || "/tienda",
         showSearch: draft.heroShowSearch,
         backgroundImageUrl: draft.heroBackgroundUrl || null,
       };
+
+      if (draft.heroVariant === "carousel" && draft.heroSlides.length) {
+        config = {
+          ...baseCfg,
+          mode: "CAROUSEL",
+          slides: draft.heroSlides.map((s) => ({
+            id: s.id,
+            title: s.title,
+            subtitle: s.subtitle,
+            imageUrl: s.imageUrl,
+            ctaLabel: s.ctaLabel || baseCfg.ctaLabel,
+            ctaHref: s.ctaHref || baseCfg.ctaHref,
+          })),
+        };
+      } else {
+        config = baseCfg;
+      }
+
+      // Layout alineado con el Hero del Home (full-bleed tipo Amazon)
       layout = {
         kind: "hero",
         align: "left",
+        width: "full-bleed",
+        bottomFade: "auto-theme",
+        overlapNext: draft.heroOverlapNext || undefined,
       };
       break;
     }
@@ -258,11 +343,20 @@ function draftToPayload(draft: Draft) {
             : undefined,
         limit: draft.prodLimit,
       };
+
       layout = {
         variant: draft.prodLayoutVariant,
         showAddToCart: draft.prodShowAddToCart,
         showRating: draft.prodShowRating,
       };
+
+      if (draft.type === "PRODUCT_GRID") {
+        layout.style = draft.prodLayoutStyle;
+        layout.cardShape = draft.prodCardShape;
+        layout.density = draft.prodDensity;
+      } else if (draft.type === "PRODUCT_STRIP") {
+        layout.railStyle = draft.prodRailStyle;
+      }
       break;
     }
 
@@ -376,6 +470,37 @@ export default function AdminHomePage() {
   const [showPreviewInModal, setShowPreviewInModal] = useState(true);
   const [isUploadingHeroImage, setIsUploadingHeroImage] = useState(false);
 
+  // Refs para inputs de archivo
+  const heroTemplateFileInputRef = useRef<HTMLInputElement | null>(null);
+  const heroBgFileInputRef = useRef<HTMLInputElement | null>(null);
+  const heroCarouselFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Subida imagen de cabecera desde el formulario
+  const [isUploadingHeroBackground, setIsUploadingHeroBackground] =
+    useState(false);
+
+  // Subida imagen por slide
+  const [heroSlideUploadingId, setHeroSlideUploadingId] = useState<
+    string | null
+  >(null);
+
+  // Imágenes para carrusel desde el modal de plantilla
+  const [heroCarouselUrls, setHeroCarouselUrls] = useState<string[]>([]);
+  const [isUploadingHeroCarousel, setIsUploadingHeroCarousel] = useState(false);
+
+  // ¿La plantilla seleccionada ya define un HERO tipo carrusel?
+  const heroTemplateHasCarousel = useMemo(() => {
+    if (!templateToApply) return false;
+    return templateToApply.sections.some((s) => {
+      if (s.type !== "HERO") return false;
+      const cfg: any = s.config || {};
+      return (
+        cfg.mode === "CAROUSEL" ||
+        (Array.isArray(cfg.slides) && cfg.slides.length > 1)
+      );
+    });
+  }, [templateToApply]);
+
   useEffect(() => {
     if (data) {
       setSections(data);
@@ -385,6 +510,17 @@ export default function AdminHomePage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
+
+  // Bloquear scroll del fondo cuando el modal está abierto
+  useEffect(() => {
+    if (!templateModalOpen) return;
+    if (typeof document === "undefined") return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [templateModalOpen]);
 
   function selectSection(sec: HomeSection | null) {
     if (!sec) {
@@ -403,12 +539,13 @@ export default function AdminHomePage() {
 
   function openTemplateModal(tpl: TemplateDefinition) {
     setTemplateToApply(tpl);
-    const hero = tpl.sections.find((s) => s.type === "HERO");
+    const hero = tpl.sections.find((s) => s.type === "HERO") as any;
     const existingBg =
-      (hero?.config?.backgroundImage?.url as string) ||
-      (hero?.config?.backgroundImageUrl as string) ||
+      hero?.config?.backgroundImage?.url ||
+      hero?.config?.backgroundImageUrl ||
       "";
     setHeroBgUrl(existingBg || "");
+    setHeroCarouselUrls([]);
     setShowPreviewInModal(true);
     setTemplateModalOpen(true);
   }
@@ -419,10 +556,11 @@ export default function AdminHomePage() {
     setTimeout(() => {
       setTemplateToApply(null);
       setHeroBgUrl("");
+      setHeroCarouselUrls([]);
     }, 180);
   }
 
-  // Uploader Cloudinary
+  // Uploader Cloudinary para la imagen de cabecera del modal (plantilla)
   async function handleHeroImageFileChange(e: any) {
     const file = e.target?.files?.[0];
     if (!file) return;
@@ -447,7 +585,7 @@ export default function AdminHomePage() {
 
       notify({
         title: "Imagen subida",
-        description: "Usaremos esta imagen como fondo del hero.",
+        description: "Usaremos esta imagen como fondo de la cabecera.",
         variant: "success",
       });
     } catch (err: any) {
@@ -459,6 +597,149 @@ export default function AdminHomePage() {
       });
     } finally {
       setIsUploadingHeroImage(false);
+      if (e.target) {
+        e.target.value = "";
+      }
+    }
+  }
+
+  // Uploader Cloudinary para la imagen de cabecera en el formulario HERO
+  async function handleHeroBackgroundFileChange(e: any) {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploadingHeroBackground(true);
+
+      const { url } = await uploadToCloudinary(file, {
+        alias: "root",
+        folder: "home",
+        resourceType: "image",
+        maxBytes: 8 * 1024 * 1024,
+        acceptMime: ["image/jpeg", "image/png", "image/webp"],
+        onProgress: () => {},
+      });
+
+      if (!url) {
+        throw new Error("La subida a Cloudinary no devolvió una URL.");
+      }
+
+      setDraft((d) => ({
+        ...d,
+        heroBackgroundUrl: url,
+      }));
+
+      notify({
+        title: "Imagen subida",
+        description: "Usaremos esta imagen como fondo de la cabecera.",
+        variant: "success",
+      });
+    } catch (err: any) {
+      console.error(err);
+      notify({
+        title: "Error al subir la imagen",
+        description: err?.message || "No se pudo subir la imagen a Cloudinary.",
+        variant: "error",
+      });
+    } finally {
+      setIsUploadingHeroBackground(false);
+      if (e.target) {
+        e.target.value = "";
+      }
+    }
+  }
+
+  // Uploader Cloudinary por slide del carrusel (formulario HERO)
+  async function handleHeroSlideFileChange(slideId: string, e: any) {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+
+    try {
+      setHeroSlideUploadingId(slideId);
+
+      const { url } = await uploadToCloudinary(file, {
+        alias: "root",
+        folder: "home/hero-slides",
+        resourceType: "image",
+        maxBytes: 8 * 1024 * 1024,
+        acceptMime: ["image/jpeg", "image/png", "image/webp"],
+        onProgress: () => {},
+      });
+
+      if (!url) {
+        throw new Error("La subida a Cloudinary no devolvió una URL.");
+      }
+
+      setDraft((d) => ({
+        ...d,
+        heroSlides: d.heroSlides.map((s) =>
+          s.id === slideId ? { ...s, imageUrl: url } : s
+        ),
+      }));
+
+      notify({
+        title: "Imagen subida",
+        description: "La slide del carrusel se actualizó correctamente.",
+        variant: "success",
+      });
+    } catch (err: any) {
+      console.error(err);
+      notify({
+        title: "Error al subir la imagen",
+        description: err?.message || "No se pudo subir la imagen a Cloudinary.",
+        variant: "error",
+      });
+    } finally {
+      setHeroSlideUploadingId(null);
+      if (e.target) {
+        e.target.value = "";
+      }
+    }
+  }
+
+  // Uploader Cloudinary para las imágenes del carrusel desde el modal de plantilla
+  async function handleHeroCarouselFilesChange(e: any) {
+    const files: FileList | undefined = e.target?.files;
+    if (!files || !files.length) return;
+
+    try {
+      setIsUploadingHeroCarousel(true);
+
+      const newUrls: string[] = [];
+      for (const file of Array.from(files)) {
+        const { url } = await uploadToCloudinary(file, {
+          alias: "root",
+          folder: "home/hero-slides",
+          resourceType: "image",
+          maxBytes: 8 * 1024 * 1024,
+          acceptMime: ["image/jpeg", "image/png", "image/webp"],
+          onProgress: () => {},
+        });
+        if (url) newUrls.push(url);
+      }
+
+      if (!newUrls.length) {
+        throw new Error("La subida a Cloudinary no devolvió URLs válidas.");
+      }
+
+      setHeroCarouselUrls((prev) => [...prev, ...newUrls]);
+
+      notify({
+        title: "Imágenes subidas",
+        description:
+          "Crearemos un carrusel en la cabecera usando estas imágenes.",
+        variant: "success",
+      });
+    } catch (err: any) {
+      console.error(err);
+      notify({
+        title: "Error al subir las imágenes",
+        description:
+          err?.message || "No se pudieron subir las imágenes a Cloudinary.",
+        variant: "error",
+      });
+    } finally {
+      setIsUploadingHeroCarousel(false);
       if (e.target) {
         e.target.value = "";
       }
@@ -525,9 +806,15 @@ export default function AdminHomePage() {
     mutationFn: async (input: {
       template: TemplateDefinition;
       heroBackgroundUrl?: string;
+      heroCarouselUrls: string[];
       existingSections: HomeSection[];
     }) => {
-      const { template, heroBackgroundUrl, existingSections } = input;
+      const {
+        template,
+        heroBackgroundUrl,
+        heroCarouselUrls,
+        existingSections,
+      } = input;
 
       // Borrar secciones actuales
       for (const s of existingSections) {
@@ -540,10 +827,44 @@ export default function AdminHomePage() {
 
       // Crear secciones de la plantilla, en orden
       for (const seed of template.sections) {
-        const cfg = { ...(seed.config || {}) };
+        const baseCfg: any = seed.config || {};
+        let cfg: any = { ...baseCfg };
 
-        if (heroBackgroundUrl && seed.type === "HERO") {
-          cfg.backgroundImageUrl = heroBackgroundUrl;
+        if (seed.type === "HERO") {
+          // Imagen base de fondo
+          if (heroBackgroundUrl) {
+            cfg.backgroundImageUrl = heroBackgroundUrl;
+          }
+
+          // Si hay imágenes para carrusel, forzamos modo CAROUSEL y generamos slides
+          if (heroCarouselUrls && heroCarouselUrls.length > 0) {
+            const ctaLabel = cfg.ctaLabel || "Ver catálogo";
+            const ctaHref = cfg.ctaHref || "/tienda";
+
+            cfg.mode = "CAROUSEL";
+            cfg.slides = heroCarouselUrls.map((url, index) => ({
+              id: `tpl-hero-slide-${index + 1}`,
+              title: seed.title || `Slide ${index + 1}`,
+              subtitle: seed.subtitle || "",
+              imageUrl: url,
+              ctaLabel,
+              ctaHref,
+            }));
+          }
+        }
+
+        let layout: any = seed.layout || {};
+        if (seed.type === "HERO") {
+          layout = {
+            ...layout,
+            width: "full-bleed",
+            bottomFade: "auto-theme",
+            align: layout.align || "left",
+            overlapNext:
+              typeof layout.overlapNext === "boolean"
+                ? layout.overlapNext
+                : true,
+          };
         }
 
         await adminCreateHomeSection({
@@ -553,7 +874,7 @@ export default function AdminHomePage() {
           subtitle: seed.subtitle ?? null,
           active: seed.active ?? true,
           config: cfg,
-          layout: seed.layout,
+          layout,
         } as any);
       }
     },
@@ -570,6 +891,7 @@ export default function AdminHomePage() {
       setTemplateModalOpen(false);
       setTemplateToApply(null);
       setHeroBgUrl("");
+      setHeroCarouselUrls([]);
     },
     onError: () => {
       notify({
@@ -584,6 +906,7 @@ export default function AdminHomePage() {
     applyTemplateMut.mutate({
       template: templateToApply,
       heroBackgroundUrl: heroBgUrl || undefined,
+      heroCarouselUrls,
       existingSections: sections,
     });
   }
@@ -661,11 +984,48 @@ export default function AdminHomePage() {
 
     if (type === "HERO") {
       return (
-        <div className="space-y-3">
+        <div className="space-y-4">
+          {/* Tipo de cabecera */}
+          <div>
+            <label className="block text-xs opacity-70 mb-1">
+              Tipo de cabecera de inicio
+            </label>
+            <div className="inline-flex rounded-xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-2-rgb))] p-1 text-xs">
+              {[
+                { value: "single", label: "Imagen única" },
+                { value: "carousel", label: "Carrusel de imágenes" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() =>
+                    setDraft((d) => ({
+                      ...d,
+                      heroVariant: opt.value as HeroVariant,
+                    }))
+                  }
+                  className={[
+                    "px-3 py-1 rounded-lg transition-colors",
+                    draft.heroVariant === opt.value
+                      ? "bg-[rgb(var(--primary-rgb))] text-[rgb(var(--bg-rgb))]"
+                      : "hover:bg-[rgb(var(--muted-rgb))]/70",
+                  ].join(" ")}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] opacity-60 mt-1">
+              El carrusel te permite rotar varias promos en la cabecera, como
+              hacen tiendas tipo Amazon.
+            </p>
+          </div>
+
+          {/* CTA global + enlace */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs opacity-70 mb-1">
-                Texto del botón
+                Texto del botón principal
               </label>
               <Input
                 value={draft.heroCtaLabel}
@@ -677,7 +1037,7 @@ export default function AdminHomePage() {
             </div>
             <div>
               <label className="block text-xs opacity-70 mb-1">
-                Enlace del botón
+                Enlace del botón principal
               </label>
               <Input
                 value={draft.heroCtaHref}
@@ -689,34 +1049,333 @@ export default function AdminHomePage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={draft.heroShowSearch}
-              onChange={(val) =>
-                setDraft((d) => ({ ...d, heroShowSearch: !!val }))
-              }
-            />
-            <span className="text-xs">
-              Mostrar buscador incrustado debajo del hero
-            </span>
+          {/* Toggles de búsqueda + overlap */}
+          <div className="flex flex-wrap gap-4">
+            <label className="flex items-center gap-2 text-xs">
+              <Switch
+                checked={draft.heroShowSearch}
+                onChange={(val) =>
+                  setDraft((d) => ({ ...d, heroShowSearch: !!val }))
+                }
+              />
+              Mostrar buscador debajo de la cabecera
+            </label>
+
+            <label className="flex items-center gap-2 text-xs">
+              <Switch
+                checked={draft.heroOverlapNext}
+                onChange={(val) =>
+                  setDraft((d) => ({ ...d, heroOverlapNext: !!val }))
+                }
+              />
+              Superponer la siguiente sección sobre la cabecera{" "}
+              <span className="opacity-60">
+                (el grid “tapa” un poco el carrusel)
+              </span>
+            </label>
           </div>
 
-          <div>
+          {/* Imagen de fondo cabecera */}
+          <div className="space-y-2">
             <label className="block text-xs opacity-70 mb-1">
-              Imagen de fondo (URL)
+              Imagen de fondo de la cabecera
             </label>
-            <Input
-              value={draft.heroBackgroundUrl}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, heroBackgroundUrl: e.target.value }))
-              }
-              placeholder="https://…"
-            />
-            <p className="text-[11px] opacity-60 mt-1">
-              Puedes pegar una URL o usar el uploader del modal de plantilla
-              para guardar una imagen en Cloudinary (carpeta <code>home</code>).
-            </p>
+            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+              <div className="flex-1">
+                <Input
+                  value={draft.heroBackgroundUrl}
+                  onChange={(e) =>
+                    setDraft((d) => ({
+                      ...d,
+                      heroBackgroundUrl: e.target.value,
+                    }))
+                  }
+                  placeholder="https://…"
+                />
+                <p className="text-[11px] opacity-60 mt-1">
+                  Puedes pegar un enlace o subir una imagen. Se usa como fondo
+                  en la cabecera simple y como respaldo si alguna slide no tiene
+                  imagen.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 mt-1 md:mt-0">
+                <input
+                  ref={heroBgFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleHeroBackgroundFileChange}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => heroBgFileInputRef.current?.click()}
+                  disabled={isUploadingHeroBackground}
+                >
+                  {isUploadingHeroBackground && (
+                    <Spinner size={14} className="mr-1" />
+                  )}
+                  Subir imagen
+                </Button>
+              </div>
+            </div>
+            {draft.heroBackgroundUrl && (
+              <div className="mt-2 rounded-xl border border-[rgb(var(--border-rgb))] overflow-hidden h-32">
+                <img
+                  src={draft.heroBackgroundUrl}
+                  alt="Fondo cabecera"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
           </div>
+
+          {/* Editor de slides cuando es carrusel */}
+          {draft.heroVariant === "carousel" && (
+            <div className="border border-[rgb(var(--border-rgb))] rounded-xl p-3 space-y-3 bg-[rgb(var(--card-2-rgb))]">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold">
+                  Slides del carrusel de cabecera
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() =>
+                    setDraft((d) => ({
+                      ...d,
+                      heroSlides: [
+                        ...d.heroSlides,
+                        {
+                          id: createSlideId(),
+                          title: d.title || "Nueva promo",
+                          subtitle: d.subtitle || "",
+                          imageUrl: d.heroBackgroundUrl || "",
+                          ctaLabel: d.heroCtaLabel || "Ver más",
+                          ctaHref: d.heroCtaHref || "/tienda",
+                        },
+                      ],
+                    }))
+                  }
+                >
+                  <Plus size={12} className="mr-1" />
+                  Añadir slide
+                </Button>
+              </div>
+
+              {draft.heroSlides.length === 0 && (
+                <p className="text-[11px] opacity-70">
+                  Añade 2–5 slides con distintas promos, imágenes y botones.
+                </p>
+              )}
+
+              <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
+                {draft.heroSlides.map((slide, index) => (
+                  <div
+                    key={slide.id}
+                    className="rounded-lg border border-[rgb(var(--border-rgb))] bg-[rgb(var(--bg-rgb))] p-3 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold">
+                        Slide {index + 1}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          className="p-1 rounded hover:bg-[rgb(var(--muted-rgb))] disabled:opacity-40"
+                          disabled={index === 0}
+                          onClick={() =>
+                            setDraft((d) => {
+                              const arr = [...d.heroSlides];
+                              const [item] = arr.splice(index, 1);
+                              arr.splice(index - 1, 0, item);
+                              return { ...d, heroSlides: arr };
+                            })
+                          }
+                          aria-label="Subir slide"
+                        >
+                          <ArrowUp size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          className="p-1 rounded hover:bg-[rgb(var(--muted-rgb))] disabled:opacity-40"
+                          disabled={index === draft.heroSlides.length - 1}
+                          onClick={() =>
+                            setDraft((d) => {
+                              const arr = [...d.heroSlides];
+                              const [item] = arr.splice(index, 1);
+                              arr.splice(index + 1, 0, item);
+                              return { ...d, heroSlides: arr };
+                            })
+                          }
+                          aria-label="Bajar slide"
+                        >
+                          <ArrowDown size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          className="p-1 rounded hover:bg-red-500/10 text-red-400"
+                          onClick={() =>
+                            setDraft((d) => ({
+                              ...d,
+                              heroSlides: d.heroSlides.filter(
+                                (s) => s.id !== slide.id
+                              ),
+                            }))
+                          }
+                          aria-label="Eliminar slide"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] opacity-70 mb-0.5">
+                          Título
+                        </label>
+                        <Input
+                          value={slide.title}
+                          onChange={(e) =>
+                            setDraft((d) => ({
+                              ...d,
+                              heroSlides: d.heroSlides.map((s) =>
+                                s.id === slide.id
+                                  ? { ...s, title: e.target.value }
+                                  : s
+                              ),
+                            }))
+                          }
+                          className="text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] opacity-70 mb-0.5">
+                          Subtítulo
+                        </label>
+                        <Input
+                          value={slide.subtitle}
+                          onChange={(e) =>
+                            setDraft((d) => ({
+                              ...d,
+                              heroSlides: d.heroSlides.map((s) =>
+                                s.id === slide.id
+                                  ? { ...s, subtitle: e.target.value }
+                                  : s
+                              ),
+                            }))
+                          }
+                          className="text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[11px] opacity-70 mb-0.5">
+                        Imagen (URL)
+                      </label>
+                      <Input
+                        value={slide.imageUrl}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            heroSlides: d.heroSlides.map((s) =>
+                              s.id === slide.id
+                                ? { ...s, imageUrl: e.target.value }
+                                : s
+                            ),
+                          }))
+                        }
+                        placeholder="https://…"
+                        className="text-xs"
+                      />
+                      <div className="flex items-center gap-2 mt-1">
+                        <input
+                          id={`slide-upload-${slide.id}`}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            handleHeroSlideFileChange(slide.id, e)
+                          }
+                        />
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          onClick={() =>
+                            document
+                              .getElementById(`slide-upload-${slide.id}`)
+                              ?.click()
+                          }
+                          disabled={heroSlideUploadingId === slide.id}
+                        >
+                          {heroSlideUploadingId === slide.id && (
+                            <Spinner size={12} className="mr-1" />
+                          )}
+                          Subir imagen
+                        </Button>
+                      </div>
+                      {slide.imageUrl && (
+                        <div className="mt-1 rounded-lg border border-[rgb(var(--border-rgb))] overflow-hidden h-20">
+                          <img
+                            src={slide.imageUrl}
+                            alt={`Slide ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] opacity-70 mb-0.5">
+                          Texto botón
+                        </label>
+                        <Input
+                          value={slide.ctaLabel}
+                          onChange={(e) =>
+                            setDraft((d) => ({
+                              ...d,
+                              heroSlides: d.heroSlides.map((s) =>
+                                s.id === slide.id
+                                  ? { ...s, ctaLabel: e.target.value }
+                                  : s
+                              ),
+                            }))
+                          }
+                          placeholder={draft.heroCtaLabel || "Ver más"}
+                          className="text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] opacity-70 mb-0.5">
+                          Enlace botón
+                        </label>
+                        <Input
+                          value={slide.ctaHref}
+                          onChange={(e) =>
+                            setDraft((d) => ({
+                              ...d,
+                              heroSlides: d.heroSlides.map((s) =>
+                                s.id === slide.id
+                                  ? { ...s, ctaHref: e.target.value }
+                                  : s
+                              ),
+                            }))
+                          }
+                          placeholder={draft.heroCtaHref || "/tienda"}
+                          className="text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       );
     }
@@ -727,7 +1386,7 @@ export default function AdminHomePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs opacity-70 mb-1">
-                Fuente de productos
+                ¿Qué productos mostrar?
               </label>
               <select
                 value={draft.prodMode}
@@ -800,7 +1459,7 @@ export default function AdminHomePage() {
 
             <div>
               <label className="block text-xs opacity-70 mb-1">
-                Diseño de tarjetas
+                Diseño de las tarjetas
               </label>
               <select
                 value={draft.prodLayoutVariant}
@@ -821,8 +1480,8 @@ export default function AdminHomePage() {
                 )}
                 {type === "PRODUCT_STRIP" && (
                   <>
-                    <option value="strip-sm">Tira compacta</option>
-                    <option value="strip-md">Tira mediana</option>
+                    <option value="strip-sm">Fila compacta</option>
+                    <option value="strip-md">Fila mediana</option>
                   </>
                 )}
               </select>
@@ -849,6 +1508,10 @@ export default function AdminHomePage() {
               Mostrar rating si hay reseñas
             </label>
           </div>
+
+          {/* (Opcional) aquí se podrían exponer controles de estilo extra:
+              panel flotante, forma de tarjeta, densidad, railStyle, etc.
+              De momento se gestionan principalmente vía plantillas. */}
         </div>
       );
     }
@@ -858,7 +1521,7 @@ export default function AdminHomePage() {
         <div className="space-y-3">
           <div>
             <label className="block text-xs opacity-70 mb-1">
-              Categorías en la tira
+              Categorías en la fila / carrusel
             </label>
             <div className="flex flex-wrap gap-1 mb-2">
               {draft.catSlugs.length === 0 && (
@@ -1154,8 +1817,8 @@ export default function AdminHomePage() {
               <div className="text-xs opacity-70 space-y-1">
                 <p>Aún no hay secciones.</p>
                 <p>
-                  Usa una plantilla de arriba o crea una{" "}
-                  <strong>“Hero principal”</strong> para empezar.
+                  Usa una plantilla de arriba o crea una sección de{" "}
+                  <strong>cabecera de inicio</strong> para empezar.
                 </p>
               </div>
             ) : (
@@ -1271,7 +1934,7 @@ export default function AdminHomePage() {
                   onChange={(e) =>
                     setDraft((d) => ({ ...d, slug: e.target.value }))
                   }
-                  placeholder="hero-principal, ofertas-hoy…"
+                  placeholder="cabecera-inicio, ofertas-hoy…"
                 />
                 <p className="text-[11px] opacity-60 mt-1">
                   Se usa para identificar la sección. Solo letras, números y
@@ -1280,7 +1943,9 @@ export default function AdminHomePage() {
               </div>
 
               <div>
-                <label className="block text-xs opacity-70 mb-1">Tipo</label>
+                <label className="block text-xs opacity-70 mb-1">
+                  Tipo de bloque
+                </label>
                 <select
                   value={draft.type}
                   onChange={(e) => {
@@ -1306,7 +1971,9 @@ export default function AdminHomePage() {
               </div>
 
               <div>
-                <label className="block text-xs opacity-70 mb-1">Título</label>
+                <label className="block text-xs opacity-70 mb-1">
+                  Título visible
+                </label>
                 <Input
                   value={draft.title}
                   onChange={(e) =>
@@ -1336,8 +2003,8 @@ export default function AdminHomePage() {
                 />
                 <span className="text-xs">
                   {draft.active
-                    ? "Visible en el inicio"
-                    : "Oculta en el inicio"}
+                    ? "Visible en la página de inicio"
+                    : "Oculta en la página de inicio"}
                 </span>
               </div>
             </div>
@@ -1416,11 +2083,11 @@ export default function AdminHomePage() {
               </p>
             </div>
 
-            {/* Campo para imagen de fondo del HERO */}
+            {/* Campo para imagen de fondo de la cabecera */}
             {templateToApply.sections.some((s) => s.type === "HERO") && (
               <div className="space-y-2">
-                <Label>Imagen de fondo del hero (opcional)</Label>
-                <div className="space-y-2">
+                <Label>Imagen de fondo de la cabecera (opcional)</Label>
+                <div className="flex flex-col gap-2 md:flex-row md:items-center">
                   <Input
                     value={heroBgUrl}
                     onChange={(e) => setHeroBgUrl(e.target.value)}
@@ -1428,35 +2095,112 @@ export default function AdminHomePage() {
                   />
                   <div className="flex items-center gap-2">
                     <input
+                      ref={heroTemplateFileInputRef}
                       type="file"
                       accept="image/*"
+                      className="hidden"
                       onChange={handleHeroImageFileChange}
-                      disabled={isUploadingHeroImage}
-                      className="block w-full text-[11px] text-[rgb(var(--fg-rgb))]"
                     />
-                    {isUploadingHeroImage && <Spinner size={16} />}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => heroTemplateFileInputRef.current?.click()}
+                      disabled={isUploadingHeroImage}
+                    >
+                      {isUploadingHeroImage && (
+                        <Spinner size={14} className="mr-1" />
+                      )}
+                      Subir imagen
+                    </Button>
                   </div>
                 </div>
                 <p className="text-[11px] opacity-70">
                   Puedes pegar una URL de imagen o subir un archivo desde tu
                   equipo. Si lo dejas vacío, podrás configurar la imagen luego
-                  editando la sección “HERO principal”.
+                  editando la sección de cabecera de inicio.
                 </p>
                 {heroBgUrl && (
                   <div className="mt-2 rounded-xl border border-[rgb(var(--line-rgb))] overflow-hidden">
                     <div className="h-40 w-full bg-[rgb(var(--muted-rgb))]">
-                      {/* solo preview visual */}
                       <img
                         src={heroBgUrl}
-                        alt="Vista previa hero"
+                        alt="Vista previa cabecera"
                         className="w-full h-full object-cover"
                       />
                     </div>
                     <div className="px-3 py-2 text-[11px] opacity-70">
-                      Vista previa aproximada de la imagen del hero.
+                      Vista previa aproximada de la imagen de la cabecera.
                     </div>
                   </div>
                 )}
+
+                {/* Imágenes para carrusel (si quieres que salga ya como carrusel) */}
+                <div className="mt-3 space-y-2">
+                  <Label>
+                    Imágenes para el carrusel de cabecera (opcional)
+                  </Label>
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                    <input
+                      ref={heroCarouselFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={handleHeroCarouselFilesChange}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => heroCarouselFileInputRef.current?.click()}
+                      disabled={isUploadingHeroCarousel}
+                    >
+                      {isUploadingHeroCarousel && (
+                        <Spinner size={14} className="mr-1" />
+                      )}
+                      Subir imágenes
+                    </Button>
+                    {!!heroCarouselUrls.length && (
+                      <span className="text-[11px] opacity-70">
+                        {heroCarouselUrls.length} imagen
+                        {heroCarouselUrls.length > 1
+                          ? "es seleccionadas"
+                          : " seleccionada"}
+                      </span>
+                    )}
+                  </div>
+
+                  {!!heroCarouselUrls.length && (
+                    <div className="flex gap-2 mt-1 overflow-x-auto pb-1">
+                      {heroCarouselUrls.map((url, idx) => (
+                        <div
+                          key={idx}
+                          className="relative h-16 w-24 rounded-lg overflow-hidden border border-[rgb(var(--line-rgb))]"
+                        >
+                          <img
+                            src={url}
+                            alt={`Slide ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <p className="text-[11px] opacity-70">
+                    Si añades varias imágenes, crearemos automáticamente un
+                    carrusel en la cabecera usando estas imágenes como slides.
+                    Después, en “Cabecera de inicio”, podrás ajustar títulos y
+                    enlaces de cada slide.
+                  </p>
+                  {heroTemplateHasCarousel && (
+                    <p className="text-[11px] opacity-60">
+                      La plantilla ya define un carrusel; estas imágenes
+                      reemplazarán las de las slides por defecto.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1504,8 +2248,8 @@ function HomeTemplatePreview({ template }: { template: TemplateDefinition }) {
 }
 
 function PreviewSection({ section }: { section: TemplateSectionSeed }) {
-  const cfg = section.config || {};
-  const layout = section.layout || {};
+  const cfg: any = section.config || {};
+  const layout: any = section.layout || {};
   const typeLabel =
     SECTION_TYPES.find((t) => t.value === section.type)?.label || section.type;
 
@@ -1518,11 +2262,25 @@ function PreviewSection({ section }: { section: TemplateSectionSeed }) {
         ? "items-end text-right md:text-left md:items-start"
         : "items-start text-left";
 
+    const hasCarousel =
+      Array.isArray(cfg.slides) && (cfg.slides as any[]).length > 1;
+    const overlap = !!layout.overlapNext;
+
     return (
-      <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-cyan-500/10 p-4 md:p-6 flex flex-col md:flex-row gap-4 md:gap-6">
-        <div className={`flex-1 flex flex-col gap-2 ${alignCls}`}>
-          <span className="text-[10px] uppercase tracking-wide text-emerald-400">
+      <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-cyan-500/10 p-4 md:p-6 flex flex-col gap-4">
+        <div className={`flex flex-col gap-2 ${alignCls}`}>
+          <span className="text-[10px] uppercase tracking-wide text-emerald-400 flex items-center gap-1">
             {typeLabel}
+            {hasCarousel && (
+              <span className="px-1.5 py-0.5 rounded-full border border-emerald-400/60 bg-emerald-500/10 text-[9px] normal-case">
+                Carrusel
+              </span>
+            )}
+            {overlap && (
+              <span className="px-1.5 py-0.5 rounded-full border border-emerald-400/40 bg-emerald-500/5 text-[9px] normal-case">
+                Superpone siguiente sección
+              </span>
+            )}
           </span>
           <h3 className="text-base md:text-xl font-semibold">
             {section.title}
@@ -1541,8 +2299,8 @@ function PreviewSection({ section }: { section: TemplateSectionSeed }) {
             )}
           </div>
         </div>
-        <div className="w-full md:w-64 h-28 md:h-36 rounded-xl border border-dashed border-emerald-400/50 bg-[rgb(var(--card-rgb))] flex items-center justify-center text-[10px] md:text-xs opacity-70">
-          Imagen destacada / producto
+        <div className="h-20 w-full rounded-xl border border-dashed border-emerald-400/40 bg-[rgb(var(--card-rgb))] flex items-center justify-center text-[10px] md:text-xs opacity-70">
+          Imagen de fondo / cabecera
         </div>
       </div>
     );

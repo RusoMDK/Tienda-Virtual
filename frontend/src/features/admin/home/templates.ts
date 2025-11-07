@@ -1,4 +1,3 @@
-// src/features/admin/home/templates.ts
 import type { HomeSectionType } from "@/features/home/types";
 
 export type TemplateSectionSeed = {
@@ -20,43 +19,81 @@ export type TemplateDefinition = {
 };
 
 /**
- * Plantillas rápidas de inicio (versión PRO)
+ * Plantillas rápidas de inicio
  *
- * Patrones pensados para home de marketplaces:
- * - Hero con búsqueda + CTA fuerte
- * - Tiras horizontales de productos (rails) para ofertas / más vendidos
- * - Tira de categorías (SOLO padres, según config.level = "PARENT_ONLY")
- * - Bloques de confianza / beneficios / marca
+ * Pensadas para comportarse como home de tiendas grandes (Amazon, Best Buy,
+ * AliExpress) pero con un diseño limpio y adaptable a tu frontend.
  *
- * Hints de UI (opcional, para el frontend):
- * - layout.animation: "fade-up" | "fade-in" | "slide-left" | "slide-right" | "stagger"
- * - layout.emphasis: "primary" | "secondary" | "muted"
- * - layout.surface: "solid" | "soft" | "glass"
- * - layout.density: "comfortable" | "compact"
- * - layout.pillStyle (CATEGORY_STRIP): "soft" | "outline" | "solid"
+ * Claves para el frontend:
+ *
+ * HERO:
+ *  - config.mode: "STATIC" | "CAROUSEL"
+ *  - layout.width: "full-bleed" | "content"
+ *  - layout.bottomFade: "auto-theme" | "none"
+ *  - layout.overlapNext: true → la siguiente sección se superpone (tipo Amazon)
+ *
+ * PRODUCT_GRID / PRODUCT_STRIP:
+ *  - layout.variant: "grid-2" | "grid-3" | "grid-4" | "strip-sm" | "strip-md"
+ *  - layout.style:
+ *      - "floating-panel" → panel flotando sobre el hero (margin-top negativo)
+ *      - "panel" → panel normal
+ *  - layout.cardShape: "square" | "portrait"
+ *  - layout.density: "compact" | "comfortable"
+ *  - layout.railStyle (STRIP):
+ *      - "tight" | "default"
  */
+
 export const HOME_TEMPLATES: TemplateDefinition[] = [
+  /**
+   * INICIO TIPO AMAZON · CARRUSEL + PANELES
+   */
   {
-    id: "marketplace-classic-v2",
-    name: "Marketplace clásico optimizado",
+    id: "amazon-style-home-v1",
+    name: "Inicio tipo Amazon · carrusel + paneles",
     description:
-      "Home completo tipo marketplace: hero con búsqueda, beneficios clave, categorías principales, ofertas y grid de novedades.",
+      "Cabecera tipo carrusel a ancho completo, con panel de productos flotante y más secciones dinámicas debajo.",
     badge: "Recomendada",
     sections: [
-      // 1) HERO principal
+      // 1) HERO / cabecera tipo carrusel
       {
-        slug: "hero-marketplace",
+        slug: "hero-amazon-like",
         type: "HERO",
-        title: "Todo lo que necesitas, en un solo lugar",
+        title: "Todo para tu día a día en un solo lugar",
         subtitle:
-          "Alimentos, limpieza, electrodomésticos y más con envíos rápidos y pagos seguros.",
+          "Promociones en alimentos, limpieza, electrodomésticos y más, con envíos rápidos y pagos seguros.",
         active: true,
         config: {
-          mode: "STATIC",
-          ctaLabel: "Ver ofertas de hoy",
+          mode: "CAROUSEL",
+          ctaLabel: "Ver ofertas destacadas",
           ctaHref: "/ofertas",
           showSearch: true,
           backgroundImageUrl: "",
+          slides: [
+            {
+              id: "amazon-hero-1",
+              title: "Ahorra en tu compra del mes",
+              subtitle: "Ofertas especiales en alimentos y bebidas.",
+              imageUrl: "",
+              ctaLabel: "Ver alimentos",
+              ctaHref: "/categorias/alimentos",
+            },
+            {
+              id: "amazon-hero-2",
+              title: "Limpieza y cuidado del hogar",
+              subtitle: "Combos de limpieza hasta 30% OFF.",
+              imageUrl: "",
+              ctaLabel: "Ver limpieza",
+              ctaHref: "/categorias/aseo-y-limpieza",
+            },
+            {
+              id: "amazon-hero-3",
+              title: "Electrodomésticos para tu casa",
+              subtitle: "Financiación y envíos a todo el país.",
+              imageUrl: "",
+              ctaLabel: "Ver electrodomésticos",
+              ctaHref: "/categorias/electrodomesticos",
+            },
+          ],
         },
         layout: {
           kind: "hero",
@@ -64,43 +101,87 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
           animation: "fade-up",
           surface: "glass",
           emphasis: "primary",
+          width: "full-bleed",
+          bottomFade: "auto-theme",
+          overlapNext: true,
         },
       },
 
-      // 2) Beneficios / confianza
+      // 2) Panel flotante de ofertas (grid cuadrado, compacto)
       {
-        slug: "beneficios-principales",
-        type: "TEXT_BLOCK",
-        title: "Compra rápido, seguro y sin complicaciones",
-        subtitle:
-          "Una experiencia pensada para tus compras del día a día y para tus compras grandes.",
+        slug: "panel-ofertas-principales",
+        type: "PRODUCT_GRID",
+        title: "Ofertas que no te puedes perder",
+        subtitle: "Un vistazo rápido a las promos más fuertes de hoy.",
         active: true,
         config: {
-          text: [
-            "• Envíos rápidos en todo el país",
-            "• Devoluciones sencillas y sin letra chica",
-            "• Pagos seguros con tarjetas y billeteras digitales",
-            "• Atención humana para ayudarte a elegir mejor",
-          ].join("\n"),
+          mode: "BEST_SELLERS",
+          limit: 8,
         },
         layout: {
-          align: "left",
+          variant: "grid-4",
+          showAddToCart: true,
+          showRating: true,
           animation: "fade-up",
+          style: "floating-panel",
+          cardShape: "square",
           density: "compact",
         },
       },
 
-      // 3) Tira de categorías principales (SOLO padres, admin las elige)
+      // 3) Panel por categoría (otro grid, agrupando catálogo)
+      {
+        slug: "panel-basicos-hogar",
+        type: "PRODUCT_GRID",
+        title: "Básicos para tu hogar",
+        subtitle: "Arma tu hogar con productos esenciales seleccionados.",
+        active: true,
+        config: {
+          mode: "BY_CATEGORY",
+          categorySlug: "",
+          limit: 8,
+        },
+        layout: {
+          variant: "grid-4",
+          showAddToCart: true,
+          showRating: false,
+          animation: "fade-up",
+          style: "panel",
+          cardShape: "square",
+          density: "compact",
+        },
+      },
+
+      // 4) Tira horizontal de productos (flash deals)
+      {
+        slug: "ofertas-relampago",
+        type: "PRODUCT_STRIP",
+        title: "Ofertas relámpago",
+        subtitle:
+          "Stock y tiempo limitados. Si te gusta algo, no lo dejes pasar.",
+        active: true,
+        config: {
+          mode: "LATEST",
+          limit: 10,
+        },
+        layout: {
+          variant: "strip-md",
+          showAddToCart: true,
+          showRating: true,
+          animation: "slide-left",
+          surface: "soft",
+          railStyle: "tight",
+        },
+      },
+
+      // 5) Tira de categorías principales
       {
         slug: "categorias-destacadas",
         type: "CATEGORY_STRIP",
         title: "Explora por categoría",
-        subtitle:
-          "Accede directo a las secciones más importantes de la tienda.",
+        subtitle: "Accede directo a las secciones más importantes.",
         active: true,
         config: {
-          // El admin elegirá las categorías concretas desde el panel.
-          // Estas deben ser categorías PADRE (Alimentos, Aseo y limpieza, Electrodomésticos, etc.)
           categories: [],
           level: "PARENT_ONLY",
         },
@@ -111,52 +192,13 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
         },
       },
 
-      // 4) Tira de ofertas / best sellers
-      {
-        slug: "ofertas-hoy",
-        type: "PRODUCT_STRIP",
-        title: "Ofertas de hoy",
-        subtitle: "Descuentos destacados por tiempo limitado.",
-        active: true,
-        config: {
-          mode: "BEST_SELLERS",
-          limit: 10,
-        },
-        layout: {
-          variant: "strip-md",
-          showAddToCart: true,
-          showRating: true,
-          animation: "slide-left",
-          surface: "soft",
-        },
-      },
-
-      // 5) Grid de novedades
-      {
-        slug: "novedades-grid",
-        type: "PRODUCT_GRID",
-        title: "Novedades en la tienda",
-        subtitle: "Productos recién llegados que vale la pena descubrir.",
-        active: true,
-        config: {
-          mode: "LATEST",
-          limit: 8,
-        },
-        layout: {
-          variant: "grid-4",
-          showAddToCart: true,
-          showRating: false,
-          animation: "fade-up",
-        },
-      },
-
       // 6) Banner de confianza / soporte
       {
         slug: "banner-confianza",
         type: "BANNER",
         title: "¿Necesitas ayuda con tu compra?",
         subtitle:
-          "Nuestro equipo de soporte está listo para ayudarte en todo momento.",
+          "Nuestro equipo está listo para ayudarte por chat, mail o teléfono.",
         active: true,
         config: {
           ctaLabel: "Hablar con soporte",
@@ -170,13 +212,15 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
     ],
   },
 
+  /**
+   * OFERTAS Y DESCUENTOS · tipo “deals / daily deals”
+   */
   {
     id: "deals-focused-v2",
-    name: "Ofertas y descubrimiento",
+    name: "Ofertas y descuentos",
     description:
-      "Home muy orientado a descuentos: hero de ofertas, flash deals, best sellers y accesos rápidos a categorías.",
+      "Home centrado en descuentos: cabecera de ofertas, flash deals, más vendidos y accesos rápidos a categorías.",
     sections: [
-      // 1) HERO orientado a ofertas
       {
         slug: "hero-ofertas",
         type: "HERO",
@@ -197,10 +241,10 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
           animation: "fade-up",
           surface: "solid",
           emphasis: "primary",
+          width: "content",
+          bottomFade: "none",
         },
       },
-
-      // 2) Tira de flash deals (últimos añadidos limitados)
       {
         slug: "ofertas-relampago",
         type: "PRODUCT_STRIP",
@@ -217,10 +261,9 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
           showAddToCart: true,
           showRating: true,
           animation: "slide-left",
+          surface: "soft",
         },
       },
-
-      // 3) Tira de más vendidos (refuerza confianza)
       {
         slug: "top-ventas-deals",
         type: "PRODUCT_STRIP",
@@ -236,10 +279,9 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
           showAddToCart: true,
           showRating: true,
           animation: "slide-right",
+          surface: "soft",
         },
       },
-
-      // 4) Grid de recomendados
       {
         slug: "recomendados-grid",
         type: "PRODUCT_GRID",
@@ -256,10 +298,11 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
           showAddToCart: true,
           showRating: true,
           animation: "fade-up",
+          style: "panel",
+          cardShape: "portrait",
+          density: "comfortable",
         },
       },
-
-      // 5) Categorías rápidas (SOLO padres)
       {
         slug: "categorias-rapidas",
         type: "CATEGORY_STRIP",
@@ -276,8 +319,6 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
           pillStyle: "outline",
         },
       },
-
-      // 6) Banner con políticas / confianza
       {
         slug: "banner-politicas",
         type: "BANNER",
@@ -297,13 +338,15 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
     ],
   },
 
+  /**
+   * EXPLORACIÓN POR CATEGORÍAS · tipo marketplace
+   */
   {
     id: "category-first-v2",
     name: "Exploración por categorías",
     description:
-      "Pensada para tiendas con muchas categorías: navegación por categorías primero y luego listados.",
+      "Pensada para tiendas con muchas categorías: primero navegación por categorías y luego listados de productos.",
     sections: [
-      // 1) HERO centrado en explorar catálogo
       {
         slug: "hero-categorias",
         type: "HERO",
@@ -323,10 +366,10 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
           align: "left",
           animation: "fade-up",
           surface: "glass",
+          width: "content",
+          bottomFade: "none",
         },
       },
-
-      // 2) Tira de categorías principales (la estrella de esta plantilla)
       {
         slug: "categorias-hero-strip",
         type: "CATEGORY_STRIP",
@@ -344,8 +387,6 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
           pillStyle: "solid",
         },
       },
-
-      // 3) Grid de destacados globales
       {
         slug: "destacados-por-categoria",
         type: "PRODUCT_GRID",
@@ -362,10 +403,11 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
           showAddToCart: true,
           showRating: false,
           animation: "fade-up",
+          style: "panel",
+          cardShape: "portrait",
+          density: "comfortable",
         },
       },
-
-      // 4) Tira de más vendidos globales
       {
         slug: "top-ventas-global",
         type: "PRODUCT_STRIP",
@@ -383,8 +425,6 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
           animation: "slide-left",
         },
       },
-
-      // 5) Banner de envíos / confianza
       {
         slug: "banner-envios",
         type: "BANNER",
@@ -404,13 +444,15 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
     ],
   },
 
+  /**
+   * MINIMAL PREMIUM · tipo tienda de marca
+   */
   {
     id: "minimal-premium-v2",
     name: "Minimal premium",
     description:
-      "Home limpio para marcas con catálogo curado: hero simple, grid potente, mensaje de marca y categorías elegantes.",
+      "Home limpia para marcas con catálogo curado: cabecera simple, grid de productos, mensaje de marca y categorías elegantes.",
     sections: [
-      // 1) HERO minimalista y centrado
       {
         slug: "hero-minimal",
         type: "HERO",
@@ -431,10 +473,10 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
           animation: "fade-up",
           surface: "soft",
           emphasis: "primary",
+          width: "content",
+          bottomFade: "none",
         },
       },
-
-      // 2) Grid principal
       {
         slug: "productos-destacados",
         type: "PRODUCT_GRID",
@@ -451,10 +493,11 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
           showAddToCart: true,
           showRating: true,
           animation: "fade-up",
+          style: "panel",
+          cardShape: "portrait",
+          density: "comfortable",
         },
       },
-
-      // 3) Tira de categorías sutil (SOLO padres)
       {
         slug: "categorias-minimal",
         type: "CATEGORY_STRIP",
@@ -471,8 +514,6 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
           pillStyle: "outline",
         },
       },
-
-      // 4) Mensaje de marca / storytelling
       {
         slug: "texto-marca",
         type: "TEXT_BLOCK",
@@ -492,8 +533,6 @@ export const HOME_TEMPLATES: TemplateDefinition[] = [
           density: "comfortable",
         },
       },
-
-      // 5) Banner de soporte
       {
         slug: "banner-soporte",
         type: "BANNER",

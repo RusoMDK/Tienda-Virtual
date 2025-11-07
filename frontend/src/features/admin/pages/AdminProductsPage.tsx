@@ -1,3 +1,4 @@
+// src/features/admin/pages/AdminProductsPage.tsx
 import { useMemo, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -627,7 +628,23 @@ export default function AdminProductsPage() {
     sku: "",
     barcode: "",
   });
-  const [loadingDetail, setLoadingDetail] = useState(false); // ahora no lo usamos para fetch, solo para overlay si quieres en un futuro
+  const [loadingDetail, setLoadingDetail] = useState(false); // overlay futuro si quieres
+
+  // 🔒 Bloquear scroll del fondo cuando haya overlay (modal o dialog) abierto
+  const scrollLockRef = useRef<string | null>(null);
+  useEffect(() => {
+    const hasOverlay = modalOpen || adjOpen;
+    const body = document.body;
+    if (hasOverlay) {
+      if (scrollLockRef.current == null) {
+        scrollLockRef.current = body.style.overflow || "";
+      }
+      body.style.overflow = "hidden";
+    } else if (scrollLockRef.current != null) {
+      body.style.overflow = scrollLockRef.current;
+      scrollLockRef.current = null;
+    }
+  }, [modalOpen, adjOpen]);
 
   function openCreate() {
     setMode("create");
@@ -1388,9 +1405,9 @@ export default function AdminProductsPage() {
         </div>
       )}
 
-      {/* Dialog: Ajustar stock (más ancho) */}
+      {/* Dialog: Ajustar stock (más ancho y con scroll interno) */}
       <Dialog open={adjOpen} onOpenChange={setAdjOpen}>
-        <DialogContent className="w-[min(900px,calc(100vw-2rem))]">
+        <DialogContent className="w-[min(900px,calc(100vw-2rem))] max-h-[calc(100vh-6rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Ajustar stock</DialogTitle>
             <DialogDescription>
@@ -1528,7 +1545,7 @@ export default function AdminProductsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal: Crear / Editar (usa tu Modal wide) */}
+      {/* Modal: Crear / Editar (usa tu Modal wide, pero escalado) */}
       <Modal
         open={modalOpen}
         onClose={closeModal}
@@ -1552,295 +1569,305 @@ export default function AdminProductsPage() {
           </div>
         }
       >
-        <div className="relative">
-          <p className="text-xs opacity-70 mb-4">
-            Mantén la información completa. La primera imagen será la principal.
-          </p>
+        {/* 👇 Wrapper con scroll interno y barra oculta */}
+        <div className="relative max-h-[80vh] overflow-y-auto overflow-x-hidden px-1 no-scrollbar">
+          <div className="origin-center scale-[0.85] sm:scale-[0.88] lg:scale-[0.93] 2xl:scale-100 transform">
+            <div className="relative">
+              <p className="text-xs opacity-70 mb-4">
+                Mantén la información completa. La primera imagen será la
+                principal.
+              </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-            {/* Col formulario */}
-            <div className="md:col-span-7 space-y-4">
-              {/* Nombre + Marca / Modelo */}
-              <div className="space-y-3">
-                <label className="block space-y-1.5">
-                  <Label className="text-xs">Nombre</Label>
-                  <Input
-                    value={form.name}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, name: e.target.value }))
-                    }
-                    placeholder="Ej: Laptop gamer 15'' RTX 4060"
-                  />
-                </label>
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                {/* Col formulario */}
+                <div className="md:col-span-7 space-y-4">
+                  {/* Nombre + Marca / Modelo */}
+                  <div className="space-y-3">
+                    <label className="block space-y-1.5">
+                      <Label className="text-xs">Nombre</Label>
+                      <Input
+                        value={form.name}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, name: e.target.value }))
+                        }
+                        placeholder="Ej: Laptop gamer 15'' RTX 4060"
+                      />
+                    </label>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <label className="block space-y-1.5">
+                        <Label className="text-xs">Marca</Label>
+                        <Input
+                          value={form.brand}
+                          onChange={(e) =>
+                            setForm((f) => ({ ...f, brand: e.target.value }))
+                          }
+                          placeholder="Ej: ASUS, Lenovo, etc."
+                        />
+                      </label>
+                      <label className="block space-y-1.5">
+                        <Label className="text-xs">Modelo</Label>
+                        <Input
+                          value={form.model}
+                          onChange={(e) =>
+                            setForm((f) => ({ ...f, model: e.target.value }))
+                          }
+                          placeholder="Ej: ROG Strix G15"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Descripción */}
                   <label className="block space-y-1.5">
-                    <Label className="text-xs">Marca</Label>
-                    <Input
-                      value={form.brand}
+                    <Label className="text-xs">Descripción</Label>
+                    <textarea
+                      value={form.description}
                       onChange={(e) =>
-                        setForm((f) => ({ ...f, brand: e.target.value }))
+                        setForm((f) => ({
+                          ...f,
+                          description: e.target.value,
+                        }))
                       }
-                      placeholder="Ej: ASUS, Lenovo, etc."
+                      placeholder="Detalles clave, especificaciones, materiales, etc."
+                      rows={8}
+                      className="w-full rounded-xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] px-3 py-2 text-sm outline-none resize-y min-h-[160px]"
                     />
                   </label>
-                  <label className="block space-y-1.5">
-                    <Label className="text-xs">Modelo</Label>
-                    <Input
-                      value={form.model}
-                      onChange={(e) =>
-                        setForm((f) => ({ ...f, model: e.target.value }))
-                      }
-                      placeholder="Ej: ROG Strix G15"
-                    />
-                  </label>
-                </div>
-              </div>
 
-              {/* Descripción */}
-              <label className="block space-y-1.5">
-                <Label className="text-xs">Descripción</Label>
-                <textarea
-                  value={form.description}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, description: e.target.value }))
-                  }
-                  placeholder="Detalles clave, especificaciones, materiales, etc."
-                  rows={8}
-                  className="w-full rounded-xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] px-3 py-2 text-sm outline-none resize-y min-h-[160px]"
-                />
-              </label>
+                  {/* Precio / Moneda */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <label className="block space-y-1.5">
+                      <Label className="text-xs">Precio</Label>
+                      <Input
+                        value={form.priceStr}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, priceStr: e.target.value }))
+                        }
+                        placeholder="Ej: 1499.99"
+                      />
+                    </label>
 
-              {/* Precio / Moneda */}
-              <div className="grid grid-cols-2 gap-4">
-                <label className="block space-y-1.5">
-                  <Label className="text-xs">Precio</Label>
-                  <Input
-                    value={form.priceStr}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, priceStr: e.target.value }))
-                    }
-                    placeholder="Ej: 1499.99"
-                  />
-                </label>
+                    <label className="block space-y-1.5">
+                      <Label className="text-xs">Moneda</Label>
+                      <select
+                        value={form.currency}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, currency: e.target.value }))
+                        }
+                        className="w-full h-10 rounded-xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] px-3 text-sm outline-none"
+                      >
+                        <option value="usd">USD</option>
+                        <option value="eur">EUR</option>
+                        <option value="mxn">MXN</option>
+                      </select>
+                    </label>
+                  </div>
 
-                <label className="block space-y-1.5">
-                  <Label className="text-xs">Moneda</Label>
-                  <select
-                    value={form.currency}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, currency: e.target.value }))
-                    }
-                    className="w-full h-10 rounded-xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] px-3 text-sm outline-none"
-                  >
-                    <option value="usd">USD</option>
-                    <option value="eur">EUR</option>
-                    <option value="mxn">MXN</option>
-                  </select>
-                </label>
-              </div>
+                  {/* Color / Condición */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <label className="block space-y-1.5">
+                      <Label className="text-xs">Color principal</Label>
+                      <Input
+                        value={form.color}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, color: e.target.value }))
+                        }
+                        placeholder="Ej: negro, rojo, azul..."
+                      />
+                    </label>
 
-              {/* Color / Condición */}
-              <div className="grid grid-cols-2 gap-4">
-                <label className="block space-y-1.5">
-                  <Label className="text-xs">Color principal</Label>
-                  <Input
-                    value={form.color}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, color: e.target.value }))
-                    }
-                    placeholder="Ej: negro, rojo, azul..."
-                  />
-                </label>
-
-                <label className="block space-y-1.5">
-                  <Label className="text-xs">Condición</Label>
-                  <select
-                    value={form.condition}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        condition: e.target.value as FormState["condition"],
-                      }))
-                    }
-                    className="w-full h-10 rounded-xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] px-3 text-sm outline-none"
-                  >
-                    <option value="">No especificar</option>
-                    <option value="NEW">Nuevo</option>
-                    <option value="USED">Usado</option>
-                    <option value="REFURBISHED">Reacondicionado</option>
-                  </select>
-                </label>
-              </div>
-
-              {/* Garantía / Entrega */}
-              <div className="grid grid-cols-2 gap-4">
-                <label className="block space-y-1.5">
-                  <Label className="text-xs">Garantía (meses)</Label>
-                  <Input
-                    value={form.warrantyMonths}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        warrantyMonths: e.target.value,
-                      }))
-                    }
-                    placeholder="Ej: 12"
-                  />
-                </label>
-
-                <div className="block space-y-1.5">
-                  <Label className="text-xs">Entrega</Label>
-                  <div className="flex items-center h-10">
-                    <label className="inline-flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={form.homeDelivery}
+                    <label className="block space-y-1.5">
+                      <Label className="text-xs">Condición</Label>
+                      <select
+                        value={form.condition}
                         onChange={(e) =>
                           setForm((f) => ({
                             ...f,
-                            homeDelivery: e.target.checked,
+                            condition: e.target.value as FormState["condition"],
                           }))
                         }
-                      />
-                      <span className="text-sm opacity-80">
-                        Disponible envío a domicilio
-                      </span>
+                        className="w-full h-10 rounded-xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] px-3 text-sm outline-none"
+                      >
+                        <option value="">No especificar</option>
+                        <option value="NEW">Nuevo</option>
+                        <option value="USED">Usado</option>
+                        <option value="REFURBISHED">Reacondicionado</option>
+                      </select>
                     </label>
+                  </div>
+
+                  {/* Garantía / Entrega */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <label className="block space-y-1.5">
+                      <Label className="text-xs">Garantía (meses)</Label>
+                      <Input
+                        value={form.warrantyMonths}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            warrantyMonths: e.target.value,
+                          }))
+                        }
+                        placeholder="Ej: 12"
+                      />
+                    </label>
+
+                    <div className="block space-y-1.5">
+                      <Label className="text-xs">Entrega</Label>
+                      <div className="flex items-center h-10">
+                        <label className="inline-flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={form.homeDelivery}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                homeDelivery: e.target.checked,
+                              }))
+                            }
+                          />
+                          <span className="text-sm opacity-80">
+                            Disponible envío a domicilio
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Categoría / Estado */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <label className="block space-y-1.5">
+                      <Label className="text-xs">Categoría</Label>
+                      <select
+                        value={form.categorySlug || ""}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            categorySlug: e.target.value || undefined,
+                          }))
+                        }
+                        className="w-full h-10 rounded-xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] px-3 text-sm outline-none"
+                      >
+                        <option value="">— Sin categoría</option>
+                        {catOptions
+                          .filter((o) => o.value !== "all")
+                          .map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+
+                    <div className="block space-y-1.5">
+                      <Label className="text-xs">Estado</Label>
+                      <div className="flex items-center h-10">
+                        <label className="inline-flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={form.active}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                active: e.target.checked,
+                              }))
+                            }
+                          />
+                          <span className="text-sm opacity-80">
+                            {form.active ? "Activo" : "Inactivo"}
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tags */}
+                  <label className="block space-y-1.5">
+                    <Label className="text-xs">Tags (para búsqueda)</Label>
+                    <Input
+                      value={form.tagsStr}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, tagsStr: e.target.value }))
+                      }
+                      placeholder="Ej: gamer, 16gb ram, rtx 4060"
+                    />
+                    <div className="text-[11px] opacity-60">
+                      Separados por coma. Se usarán para mejorar la búsqueda y
+                      los filtros.
+                    </div>
+                  </label>
+
+                  {/* SKU / Código de barras */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <label className="block space-y-1.5">
+                      <Label className="text-xs">SKU interno</Label>
+                      <Input
+                        value={form.sku}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, sku: e.target.value }))
+                        }
+                        placeholder="Código interno de inventario"
+                      />
+                    </label>
+                    <label className="block space-y-1.5">
+                      <Label className="text-xs">Código de barras / GTIN</Label>
+                      <Input
+                        value={form.barcode}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, barcode: e.target.value }))
+                        }
+                        placeholder="EAN / UPC / GTIN"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Col imágenes */}
+                <div className="md:col-span-5 space-y-3">
+                  <div className="text-xs opacity-70">Imágenes</div>
+                  <ImageUploader
+                    value={form.images}
+                    onChange={(next) =>
+                      setForm((f) => ({ ...f, images: next }))
+                    }
+                    max={8}
+                    onUpload={async (file) => {
+                      try {
+                        const folderSlug =
+                          (form.slug && form.slug.trim()) ||
+                          slugify(form.name) ||
+                          undefined;
+                        const up = await uploadProductImage(file, folderSlug);
+                        return {
+                          url: up.url,
+                          publicId: up.publicId,
+                          position: form.images?.length || 0,
+                        } as UImage;
+                      } catch (e: any) {
+                        toast({
+                          title: e?.message || "No se pudo subir la imagen",
+                          variant: "error",
+                        });
+                        throw e;
+                      }
+                    }}
+                  />
+                  <div className="text-[11px] opacity-60">
+                    Arrastra para reordenar. La primera es la <b>principal</b>.
                   </div>
                 </div>
               </div>
 
-              {/* Categoría / Estado */}
-              <div className="grid grid-cols-2 gap-4">
-                <label className="block space-y-1.5">
-                  <Label className="text-xs">Categoría</Label>
-                  <select
-                    value={form.categorySlug || ""}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        categorySlug: e.target.value || undefined,
-                      }))
-                    }
-                    className="w-full h-10 rounded-xl bg-[rgb(var(--card-rgb))] border border-[rgb(var(--border-rgb))] px-3 text-sm outline-none"
-                  >
-                    <option value="">— Sin categoría</option>
-                    {catOptions
-                      .filter((o) => o.value !== "all")
-                      .map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-
-                <div className="block space-y-1.5">
-                  <Label className="text-xs">Estado</Label>
-                  <div className="flex items-center h-10">
-                    <label className="inline-flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={form.active}
-                        onChange={(e) =>
-                          setForm((f) => ({
-                            ...f,
-                            active: e.target.checked,
-                          }))
-                        }
-                      />
-                      <span className="text-sm opacity-80">
-                        {form.active ? "Activo" : "Inactivo"}
-                      </span>
-                    </label>
+              {(loadingDetail || createMut.isPending || patchMut.isPending) && (
+                <div className="absolute inset-0 rounded-2xl bg-black/30 grid place-content-center">
+                  <div className="text-sm opacity-90 px-3 py-2 rounded-lg border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] animate-pulse">
+                    {loadingDetail ? "Cargando…" : "Guardando…"}
                   </div>
                 </div>
-              </div>
-
-              {/* Tags */}
-              <label className="block space-y-1.5">
-                <Label className="text-xs">Tags (para búsqueda)</Label>
-                <Input
-                  value={form.tagsStr}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, tagsStr: e.target.value }))
-                  }
-                  placeholder="Ej: gamer, 16gb ram, rtx 4060"
-                />
-                <div className="text-[11px] opacity-60">
-                  Separados por coma. Se usarán para mejorar la búsqueda y los
-                  filtros.
-                </div>
-              </label>
-
-              {/* SKU / Código de barras */}
-              <div className="grid grid-cols-2 gap-4">
-                <label className="block space-y-1.5">
-                  <Label className="text-xs">SKU interno</Label>
-                  <Input
-                    value={form.sku}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, sku: e.target.value }))
-                    }
-                    placeholder="Código interno de inventario"
-                  />
-                </label>
-                <label className="block space-y-1.5">
-                  <Label className="text-xs">Código de barras / GTIN</Label>
-                  <Input
-                    value={form.barcode}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, barcode: e.target.value }))
-                    }
-                    placeholder="EAN / UPC / GTIN"
-                  />
-                </label>
-              </div>
-            </div>
-
-            {/* Col imágenes */}
-            <div className="md:col-span-5 space-y-3">
-              <div className="text-xs opacity-70">Imágenes</div>
-              <ImageUploader
-                value={form.images}
-                onChange={(next) => setForm((f) => ({ ...f, images: next }))}
-                max={8}
-                onUpload={async (file) => {
-                  try {
-                    // Carpeta final: Tienda-Virtual/products/<slug|nombre>
-                    const folderSlug =
-                      (form.slug && form.slug.trim()) ||
-                      slugify(form.name) ||
-                      undefined;
-                    const up = await uploadProductImage(file, folderSlug);
-                    return {
-                      url: up.url,
-                      publicId: up.publicId,
-                      position: form.images?.length || 0,
-                    } as UImage;
-                  } catch (e: any) {
-                    toast({
-                      title: e?.message || "No se pudo subir la imagen",
-                      variant: "error",
-                    });
-                    throw e;
-                  }
-                }}
-              />
-              <div className="text-[11px] opacity-60">
-                Arrastra para reordenar. La primera es la <b>principal</b>.
-              </div>
+              )}
             </div>
           </div>
-
-          {(loadingDetail || createMut.isPending || patchMut.isPending) && (
-            <div className="absolute inset-0 rounded-2xl bg-black/30 grid place-content-center">
-              <div className="text-sm opacity-90 px-3 py-2 rounded-lg border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] animate-pulse">
-                {loadingDetail ? "Cargando…" : "Guardando…"}
-              </div>
-            </div>
-          )}
         </div>
       </Modal>
     </div>
