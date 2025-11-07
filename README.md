@@ -1,193 +1,230 @@
-# Tienda Virtual — Monorepo (Backend + Frontend)
+# 🛒 Tienda Virtual
 
-_E-commerce full-stack con Fastify + Prisma + PostgreSQL en el backend y React + Vite + Tailwind en el frontend. JWT, 2FA, Cloudinary, pagos con Stripe, panel admin y más. Sí, la tienda vende… y también escala 😉._
+Tienda virtual full-stack con **frontend en React + TypeScript + Vite** y un **panel de administración** para gestionar productos, stock y contenido de la página de inicio.
+
+Pensada como una base sólida para un e-commerce moderno: catálogo rápido, detalle de producto cuidado, carrito integrado y herramientas para el administrador (importación CSV, ajuste de stock, edición visual del home, etc.).
 
 ---
 
-## 🧭 TL;DR (arranca en 5 minutos)
+## ✨ Funcionalidades principales
+
+### Frontend (tienda)
+
+- 🏠 **Home destacada**
+
+  - Carrusel tipo hero full-width.
+  - Secciones configurables desde el admin (ofertas, categorías, destacados, etc.).
+
+- 🧭 **Catálogo de productos**
+
+  - Listado paginado con **grid responsivo**.
+  - Filtros por categoría /subcategoría.
+  - Ordenamiento por fecha y precio.
+  - Tamaño de página configurable (12 / 24 / 36 productos).
+
+- 🔍 **Detalle de producto**
+
+  - Galería de imágenes con miniaturas y **zoom / lightbox**.
+  - Estado de stock (en stock, bajo, sin stock, no disponible).
+  - Control de cantidad con límites según stock y unidades en carrito.
+  - Botones de **“Añadir al carrito”** y **“Comprar ahora”**.
+  - Sección de productos relacionados en formato compacto.
+
+- 🛒 **Carrito y checkout**
+
+  - Carrito persistente en el navegador.
+  - Control de stock por producto.
+  - Preparado para integrarse con pasarelas de pago (ej: Stripe).
+
+- 🎨 **UI / UX**
+  - Diseño moderno con **Tailwind CSS** y componentes reutilizables.
+  - Layout responsivo pensado para desktop y laptops (y mobile-ready).
+  - Estados de carga y skeletons para una mejor percepción de velocidad.
+  - Sistema de temas (dark/light) listo para expandir.
+
+---
+
+### Panel de administración
+
+- 📦 **Gestión de productos**
+
+  - CRUD completo de productos.
+  - Edición avanzada: nombre, descripción, precio, moneda, categoría, estado, tags, SKU, código de barras, etc.
+  - Gestión de imágenes con **ImageUploader** (arrastrar para reordenar, primera imagen como portada).
+
+- 📊 **Stock e inventario**
+
+  - Ajuste de stock con motivo y nota.
+  - Historial de movimientos (ledger) por producto.
+  - Indicadores de stock bajo / sin stock en la tabla.
+
+- 📁 **Importación / exportación**
+
+  - Importación de productos por CSV con mapeo de columnas.
+  - Creación masiva + ajuste de stock a partir de CSV.
+  - Exportación de la página de productos actual a CSV.
+  - Plantilla CSV de ejemplo descargable.
+
+- 🧩 **Home editable**
+  - Configuración visual de secciones de inicio.
+  - Hero/carrusel, bloques, etc. desde el admin (sin tocar código).
+
+---
+
+## 🧱 Stack técnico
+
+### Frontend
+
+- ⚛️ **React** + **TypeScript**
+- ⚡ **Vite** como bundler
+- 💨 **Tailwind CSS** para estilos
+- 🎯 **TanStack Query** para manejo de datos async (API)
+- 🧱 Sistema de componentes en `src/ui`:
+  - `Button`, `Card`, `Dialog`, `Modal`, `Input`, `Badge`, `Dropdown`, `Skeleton`, `Toast`, etc.
+- 🧭 React Router para las rutas:
+  - `/` – Home
+  - `/products` – Catálogo
+  - `/product/:slug` – Detalle de producto
+  - `/admin/...` – Panel de administración
+
+### Backend
+
+> Ajusta esta sección según tu implementación real.
+
+- 🟢 Node.js
+- API REST en `/backend`
+- Variables de entorno documentadas en `backend/.env.example`
+- Endpoints para:
+  - Productos (catálogo, detalle, listado admin)
+  - Categorías
+  - Stock / ledger
+  - Pedidos (según implementes)
+
+---
+
+## 🚀 Puesta en marcha
+
+Clona el repo:
 
 ```bash
 git clone https://github.com/RusoMDK/Tienda-Virtual.git
 cd Tienda-Virtual
 ```
 
-**Backend**
+### 1. Configura las variables de entorno
+
+Copia los archivos de ejemplo y ajusta tus valores:
+
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+```
+
+Rellena cada `.env` con tus credenciales (DB, claves externas, URLs, etc.).
+
+### 2. Instala dependencias
+
+Backend:
+
 ```bash
 cd backend
-cp .env.example .env      # edita valores (JWTs, DB, Cloudinary, Stripe, etc.)
-npm i
-npx prisma generate
-# si tienes migraciones:
-npx prisma migrate reset --force
-# si NO usas migraciones:
-# npx prisma db push
-npm start                 # http://localhost:4000
+npm install
 ```
 
-**Frontend**
+Frontend:
+
 ```bash
 cd ../frontend
-cp .env.example .env      # VITE_API_URL, VITE_CLOUDINARY_CLOUD_NAME, etc.
-npm i
-npm run dev               # http://localhost:5173
+npm install
 ```
 
-**Smoke tests**
+### 3. Ejecuta el proyecto en desarrollo
+
+Backend:
+
 ```bash
-curl http://localhost:4000/categories
-curl "http://localhost:4000/products?page=1&pageSize=12"
-# 401 en /me o /auth/refresh es normal sin sesión/cookies
+cd backend
+npm run dev
 ```
 
----
+Frontend:
 
-## 🏗️ Arquitectura & Tech Stack
-
-**Backend**
-- Fastify 5 (CORS, Helmet, Rate Limit, Cookies, JWT)
-- Prisma ORM + PostgreSQL
-- Zod para validación de env y payloads
-- Autenticación JWT (access/refresh), 2FA (TOTP)
-- Stripe (checkout) • Cloudinary (media) • Cron jobs (node-cron)
-- Pino logger • SSE para soporte / eventos
-- Rutas: `auth`, `me`, `addresses`, `orders`, `payments`, `products`, `categories`, `support`, `fx.*`, `cloudinary`, `image-proxy`, `admin.*`
-
-**Frontend**
-- React + Vite + TypeScript
-- Tailwind CSS + UI components propios
-- Router con rutas protegidas
-- Estado/API helpers (query client)
-- Módulos: catálogo, producto, carrito, checkout, cuenta, admin (productos, categorías, usuarios, soporte, FX), soporte (inbox, hilo, adjuntos), moneda y precios (conmutador)
-
----
-
-## 🗂️ Estructura del repo
-
-```
-Tienda-Virtual/
-├─ backend/        # Fastify + Prisma + TS
-│  ├─ prisma/      # schema.prisma, migrations/, seed.ts
-│  └─ src/         # plugins, routes, services, jobs, utils
-└─ frontend/       # React + Vite + TS + Tailwind
-   └─ src/         # features, pages, ui, lib, theme...
-```
-
----
-
-## ⚙️ Configuración de entorno
-
-**Backend (`backend/.env.example`)** incluye:
-- `DATABASE_URL` (Postgres)
-- `PORT`, `NODE_ENV`, `CORS_ORIGIN` / `FRONTEND_ORIGIN`
-- `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, TTLs
-- Cookies (`COOKIE_SECURE`, `COOKIE_SAME_SITE`, etc.)
-- **Stripe** (secret key y webhook secret) ← _usa placeholders, jamás claves reales en el repo_
-- **Cloudinary** (`CLOUDINARY_*`)
-- FX cron (opcional)
-
-> Genera secretos fuertes:
->
-> ```bash
-> openssl rand -hex 64
-> ```
-
-**Frontend (`frontend/.env.example`)**:
-- `VITE_API_URL=http://localhost:4000`
-- `VITE_CLOUDINARY_CLOUD_NAME=...`
-- (Opcional) `VITE_STRIPE_PUBLISHABLE_KEY` (clave **publicable** de Stripe)
-
-> Los `.env` **no** se commitean; los `.env.example` **sí**.
-
----
-
-## 🧰 Comandos útiles
-
-**Backend**
 ```bash
-npm start            # dev con tsx (http://localhost:4000)
-npm run build        # tsc -> dist (si necesitas build)
-npx prisma generate
-npx prisma migrate reset --force   # recrea y aplica migraciones (+ seed si procede)
-npx prisma db push                 # crea tablas sin migraciones
-npm run prisma:seed                # ejecuta prisma/seed.ts (si aplica)
-npx prisma studio                  # GUI para la DB
+cd frontend
+npm run dev
 ```
 
-**Frontend**
+El frontend normalmente levantará en algo como:
+
+```text
+http://localhost:5173
+```
+
+(Depende de la config de Vite.)
+
+---
+
+## 📂 Estructura del proyecto (resumen frontend)
+
+```text
+frontend/
+  src/
+    app/            # Providers globales (React Query, tema, etc.)
+    features/
+      home/         # Página de inicio + layout + componentes
+      products/     # Catálogo, detalle, cards, API de productos
+      cart/         # Estado global del carrito
+      admin/        # Panel de administración (productos, home, etc.)
+      categories/   # Categorías y subcategorías
+      checkout/     # Flujo de checkout
+      auth/         # Autenticación
+      ...
+    layout/
+      Navbar.tsx
+      Footer.tsx
+      Container.tsx
+    ui/             # Design system (botones, cards, modals, etc.)
+    styles/
+      theme.css     # Tokens / variables de tema
+```
+
+---
+
+## 🧪 Scripts útiles (frontend)
+
+> Verifica / ajusta según tu `frontend/package.json`.
+
 ```bash
-npm run dev          # http://localhost:5173
+# Desarrollo
+npm run dev
+
+# Build producción
 npm run build
+
+# Preview del build
 npm run preview
+
+# Linter / formato
+npm run lint
 ```
 
 ---
 
-## 🛢️ PostgreSQL (dev rápido en macOS)
+## ✅ Estado actual
 
-Con Homebrew:
-```bash
-brew install postgresql@16
-brew services start postgresql@16
-
-# crea rol/DB de ejemplo (ajusta si ya tienes otra config)
-psql -d postgres -c "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='tienda') THEN CREATE ROLE tienda LOGIN PASSWORD 'tienda'; END IF; END $$;"
-psql -d postgres -c "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_database WHERE datname='tienda') THEN CREATE DATABASE tienda OWNER tienda; END IF; END $$;"
-psql -d tienda -c "GRANT ALL PRIVILEGES ON SCHEMA public TO tienda; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
-```
-
-`.env` (backend):
-```
-DATABASE_URL="postgresql://tienda:tienda@127.0.0.1:5432/tienda?schema=public"
-```
+- [x] Catálogo funcional con filtros y paginación.
+- [x] Detalle de producto con galería e integración con carrito.
+- [x] Panel admin de productos + stock + CSV import/export.
+- [x] Home con carrusel y secciones configurables.
+- [ ] Integrar pasarela de pago real (Stripe, PayPal, etc.).
+- [ ] Implementar favoritos / wishlist.
+- [ ] Mejorar SEO (metadatos por producto, OpenGraph, etc.).
 
 ---
 
-## 🔐 Seguridad (muy importante)
+## 📄 Licencia
 
-- **No subas secretos** (JWT, claves de Stripe, Cloudinary, etc.). GitHub Push Protection bloquea pushes con patrones sensibles.
-- Usa placeholders en `*.env.example` (ej. `__REPLACE_ME__`).
-- Rota llaves si alguna vez se expusieron.
-- En producción: HTTPS y `COOKIE_SECURE=true`.
+Este proyecto no es de código abierto clásico.
 
----
-
-## 🧪 Endpoints de prueba (dev)
-
-```bash
-# categorías (público)
-curl http://localhost:4000/categories
-
-# productos (público, paginado)
-curl "http://localhost:4000/products?page=1&pageSize=12"
-
-# FX público (si activaste el cron/seed)
-curl http://localhost:4000/fx/public
-```
-
-> **401** en `/me` o `/auth/refresh` es esperado sin sesión.
-
----
-
-## 🗺️ Roadmap corto
-
-- [ ] Búsqueda full-text/tri-gram + filtros avanzados
-- [ ] Webhooks de pago en producción
-- [ ] Roles/Permisos finos para admin/staff
-- [ ] Tests e2e (Playwright/Cypress)
-- [ ] Docker Compose para dev one-shot
-
----
-
-## 🤝 Contribuir
-
-PRs e issues bienvenidos. Mantén estilo consistente, describe bien el cambio y no subas `.env`. _Si dudas, abre issue: mejor preguntar que romper la producción de tu yo del futuro._
-
----
-
-## 🧾 Licencia
-
-Consulta `LICENSE` en este repo.
-
----
-
-_Hecho con ❤️, Fastify y un cafecito. Si esto te ahorró tiempo, deja una ⭐._
+Todo el código está protegido por **derechos de autor (copyright)**.  
+Consulta el archivo [`LICENSE`](./LICENSE) para ver los términos completos.
