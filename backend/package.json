@@ -33,7 +33,7 @@
     "fastify-sse-v2": "^4.2.1",
     "node-cron": "^4.2.1",
     "otplib": "^12.0.1",
-    "pino": "^9.9.0",
+    "pino": "^10.1.0",
     "prisma": "^6.14.0",
     "qrcode": "^1.5.4",
     "speakeasy": "^2.0.0",
