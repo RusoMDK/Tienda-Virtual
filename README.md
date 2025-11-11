@@ -1,8 +1,8 @@
 # 🛒 Tienda Virtual
 
-Tienda virtual full-stack con **frontend en React + TypeScript + Vite** y un **panel de administración** para gestionar productos, stock y contenido de la página de inicio.
+Tienda virtual full-stack con **frontend en React + TypeScript + Vite** y un **panel de administración** para gestionar productos, stock, contenido de la página de inicio y ahora también **favoritos y notificaciones**.
 
-Pensada como una base sólida para un e-commerce moderno: catálogo rápido, detalle de producto cuidado, carrito integrado y herramientas para el administrador (importación CSV, ajuste de stock, edición visual del home, etc.).
+Pensada como una base sólida para un e-commerce moderno: catálogo rápido, detalle de producto cuidado, carrito integrado, **lista de deseos**, **centro de notificaciones**, multi-moneda, multi-idioma y herramientas para el administrador (importación CSV, ajuste de stock, edición visual del home, etc.).
 
 ---
 
@@ -18,7 +18,7 @@ Pensada como una base sólida para un e-commerce moderno: catálogo rápido, det
 - 🧭 **Catálogo de productos**
 
   - Listado paginado con **grid responsivo**.
-  - Filtros por categoría /subcategoría.
+  - Filtros por categoría / subcategoría.
   - Ordenamiento por fecha y precio.
   - Tamaño de página configurable (12 / 24 / 36 productos).
 
@@ -34,13 +34,78 @@ Pensada como una base sólida para un e-commerce moderno: catálogo rápido, det
 
   - Carrito persistente en el navegador.
   - Control de stock por producto.
+  - Resumen en el **navbar** con total dinámico y animación al añadir ítems.
   - Preparado para integrarse con pasarelas de pago (ej: Stripe).
 
+- ❤️ **Favoritos / Wishlist**
+
+  - Icono de corazón en cards y detalle de producto para **añadir/quitar de favoritos**.
+  - Corazón del navbar con:
+    - Color dinámico (vacío / con favoritos).
+    - Contador de favoritos con animación suave.
+  - Página **“Mis favoritos”**:
+    - Grid responsivo con diseño tipo vitrina.
+    - Orden inteligente: primero productos que **bajaron de precio**, luego sin cambios y al final los que subieron.
+    - Indicadores visuales:
+      - 🔻 Porcentaje de descuento respecto al momento en que se guardó.
+      - 🔺 Diferencia de precio si aumentó.
+    - Información de:
+      - Precio al guardar vs. precio actual.
+      - Fecha en que se añadió a favoritos.
+    - Vacío muy cuidado: mensaje amigable y CTA para seguir explorando.
+
+- 🔔 **Notificaciones**
+
+  - **Campana en el navbar** con indicador de no leídas.
+  - **Dropdown de notificaciones**:
+    - Lista compacta con título, cuerpo y fecha.
+    - Marca visual para no leídas.
+    - Acciones rápidas:
+      - Marcar individual como leída.
+      - Marcar todas como leídas.
+      - Ir a la pantalla de notificaciones.
+  - **Centro de notificaciones** (`/notifications`):
+    - Diseño tipo **timeline** agrupado por día (“Hoy”, “Ayer”, fechas).
+    - Filtro de **Todas** / **No leídas**.
+    - Categorías con iconos y tonos:
+      - Pedido, Soporte, Seguridad, Favoritos, Promociones, General.
+    - Cada notificación incluye:
+      - Banda lateral de estado (leída / no leída).
+      - Icono y etiqueta de categoría.
+      - Hora, título y descripción.
+      - Botón **“Marcar como leído”**.
+      - Botón **“Ver detalle”** que navega al recurso correspondiente:
+        - Pedido, producto, conversación de soporte, etc.
+    - Paginación con botón **“Cargar más notificaciones”**.
+
+- 👤 **Cuenta, pedidos y soporte**
+
+  - Sistema de autenticación con rutas de login / registro.
+  - Menú de cuenta en el navbar (cuenta, listas, pedidos, admin/soporte).
+  - Página de pedidos y seguimiento.
+  - Sección de soporte con acceso rápido desde el navbar para roles de soporte/admin.
+  - Backend preparado para **2FA** (segundo factor de autenticación) y notificaciones de seguridad.
+
+- 🌐 **Idioma y moneda**
+
+  - Selector de idioma (ES / EN).
+  - Selector de moneda con **CUP (MN) como primera opción** y otras divisas (USD, EUR, MXN, etc.).
+  - Conversión de precios usando tasas configurables.
+  - Preview tipo: `1 USD ≈ X MN` o `1 USD ≈ X EUR`.
+
 - 🎨 **UI / UX**
+
   - Diseño moderno con **Tailwind CSS** y componentes reutilizables.
   - Layout responsivo pensado para desktop y laptops (y mobile-ready).
   - Estados de carga y skeletons para una mejor percepción de velocidad.
   - Sistema de temas (dark/light) listo para expandir.
+  - Navbar inteligente:
+    - Se oculta al hacer scroll hacia abajo y reaparece al subir.
+    - Animaciones sutiles en iconos (carrito y favoritos).
+  - **Toasts**:
+    - Aparecen en la parte superior derecha, alineados con el navbar.
+    - Animación suave tipo “persiana” desde el lateral.
+    - Variantes para éxito / error con diseño minimalista empresarial.
 
 ---
 
@@ -66,8 +131,18 @@ Pensada como una base sólida para un e-commerce moderno: catálogo rápido, det
   - Plantilla CSV de ejemplo descargable.
 
 - 🧩 **Home editable**
+
   - Configuración visual de secciones de inicio.
   - Hero/carrusel, bloques, etc. desde el admin (sin tocar código).
+
+- 📨 **Notificaciones (backend)**
+
+  - Modelo de notificación en base de datos mediante Prisma.
+  - Servicio para crear notificaciones ligadas a eventos (pedidos, soporte, seguridad, wishlist, etc.).
+  - Rutas protegidas para:
+    - Listar notificaciones del usuario.
+    - Marcar como leídas.
+    - Configurar preferencias básicas.
 
 ---
 
@@ -79,26 +154,37 @@ Pensada como una base sólida para un e-commerce moderno: catálogo rápido, det
 - ⚡ **Vite** como bundler
 - 💨 **Tailwind CSS** para estilos
 - 🎯 **TanStack Query** para manejo de datos async (API)
-- 🧱 Sistema de componentes en `src/ui`:
-  - `Button`, `Card`, `Dialog`, `Modal`, `Input`, `Badge`, `Dropdown`, `Skeleton`, `Toast`, etc.
-- 🧭 React Router para las rutas:
+- 🧭 **React Router** para las rutas:
   - `/` – Home
-  - `/products` – Catálogo
+  - `/search` – Búsqueda con filtros y categorías
   - `/product/:slug` – Detalle de producto
+  - `/cart` – Carrito
+  - `/wishlist` – Lista de deseos
+  - `/orders` – Pedidos del usuario
+  - `/notifications` – Centro de notificaciones
+  - `/help` – Ayuda
+  - `/support` – Panel de soporte (según rol)
   - `/admin/...` – Panel de administración
+
+- 🧱 Sistema de componentes en `src/ui`:
+  - `Button`, `Card`, `Dialog`, `Modal`, `Input`, `Badge`, `Dropdown`,  
+    `Skeleton`, `Toast`, `NotificationBell`, etc.
 
 ### Backend
 
-> Ajusta esta sección según tu implementación real.
-
-- 🟢 Node.js
-- API REST en `/backend`
+- 🟢 Node.js + TypeScript
+- 🗄️ **Prisma ORM** (`backend/prisma/schema.prisma` + migraciones)
+- API REST en `backend/src` con rutas organizadas por dominio:
+  - `auth`, `2fa`, `products`, `categories`, `orders`, `support`, `me.notifications`, etc.
 - Variables de entorno documentadas en `backend/.env.example`
 - Endpoints para:
   - Productos (catálogo, detalle, listado admin)
   - Categorías
   - Stock / ledger
-  - Pedidos (según implementes)
+  - Pedidos
+  - Wishlist
+  - Notificaciones + preferencias
+  - Autenticación y 2FA (segundo factor) según configuración
 
 ---
 
@@ -169,21 +255,24 @@ http://localhost:5173
 ```text
 frontend/
   src/
-    app/            # Providers globales (React Query, tema, etc.)
+    app/            # Providers globales (React Query, tema, toasts, etc.)
     features/
       home/         # Página de inicio + layout + componentes
       products/     # Catálogo, detalle, cards, API de productos
       cart/         # Estado global del carrito
+      wishlist/     # Lógica y páginas de favoritos
+      notifications/# Dropdown + centro de notificaciones + hooks/API
       admin/        # Panel de administración (productos, home, etc.)
       categories/   # Categorías y subcategorías
       checkout/     # Flujo de checkout
-      auth/         # Autenticación
+      auth/         # Autenticación (login, registro, etc.)
+      support/      # Soporte / conversaciones (según rol)
       ...
     layout/
       Navbar.tsx
       Footer.tsx
       Container.tsx
-    ui/             # Design system (botones, cards, modals, etc.)
+    ui/             # Design system (botones, cards, dropdowns, toasts, etc.)
     styles/
       theme.css     # Tokens / variables de tema
 ```
@@ -216,9 +305,12 @@ npm run lint
 - [x] Detalle de producto con galería e integración con carrito.
 - [x] Panel admin de productos + stock + CSV import/export.
 - [x] Home con carrusel y secciones configurables.
+- [x] **Wishlist / favoritos** con página dedicada y corazón en navbar.
+- [x] **Sistema de notificaciones** (backend + dropdown + centro de notificaciones).
+- [x] Mejoras de UX: navbar animado, toasts laterales suaves, badges en iconos.
 - [ ] Integrar pasarela de pago real (Stripe, PayPal, etc.).
-- [ ] Implementar favoritos / wishlist.
 - [ ] Mejorar SEO (metadatos por producto, OpenGraph, etc.).
+- [ ] Ampliar panel admin (gestión avanzada de pedidos, reporting, etc.).
 
 ---
 
