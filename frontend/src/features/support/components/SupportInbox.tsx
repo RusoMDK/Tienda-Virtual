@@ -540,8 +540,8 @@ function renderSlaPill(c: Conversation) {
   const cls = overdue
     ? "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30"
     : atRisk
-    ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
-    : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30";
+      ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
+      : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30";
 
   const label = overdue
     ? `SLA vencida hace ${Math.abs(diffMin)}m`

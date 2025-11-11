@@ -23,6 +23,8 @@ import { MsgKind, type Message } from "../types";
 import { useAuthStore } from "@/store/auth";
 import { Link } from "react-router-dom";
 
+import { useOnClickOutside } from "../../../hooks/useOnClickOutside";
+
 const BRAND = { name: "tienda", avatar: "/brand-assets/logo_thumbnail.svg" };
 
 function useSimpleAvailability() {
@@ -44,6 +46,7 @@ function useSimpleAvailability() {
 export default function SupportWidget() {
   const token = useAuthStore((s) => s.accessToken);
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const [convId, setConvId] = useState<string | null>(null);
   const [unread, setUnread] = useState(0);
   const qc = useQueryClient();
@@ -68,7 +71,7 @@ export default function SupportWidget() {
         ...conversation,
         messages,
       });
-      void markSeen(conversation.id).catch(() => {});
+      void markSeen(conversation.id).catch(() => { });
       setUnread(0);
     } else {
       setConvId(null);
@@ -96,7 +99,7 @@ export default function SupportWidget() {
 
   useEffect(() => {
     if (!open || !convId || !convQ.data?.messages?.length) return;
-    void markSeen(convId).catch(() => {});
+    void markSeen(convId).catch(() => { });
   }, [open, convId, convQ.data?.messages?.length]);
 
   const lastMsgIdRef = useRef<string | null>(null);
@@ -162,11 +165,13 @@ export default function SupportWidget() {
     [online]
   );
 
+  useOnClickOutside(containerRef, () => setOpen(false), open)
+
   return (
     <>
       {/* Burbuja */}
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => setOpen(!open)}
         className="fixed bottom-4 right-4 z-40 rounded-full h-14 w-14 grid place-items-center shadow-lg border border-[rgb(var(--border-rgb))] bg-gradient-to-br from-[var(--brand-start)] to-[var(--brand-end)] text-[rgb(var(--bg-rgb))] transition hover:scale-[1.03] active:scale-[0.98]"
         title="Chat de soporte"
         aria-label="Chat de soporte"
@@ -190,6 +195,7 @@ export default function SupportWidget() {
         <div
           className="fixed bottom-20 right-4 z-50 w-[min(420px,calc(100vw-1.5rem))] rounded-2xl border border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-rgb))] shadow-2xl overflow-hidden translate-y-2 opacity-0 animate-[fadeInUp_.15s_ease-out_forwards]"
           role="dialog"
+          ref={containerRef}
           aria-label="Chat de soporte"
         >
           <div className="h-1 w-full bg-gradient-to-r from-[var(--brand-start)] to-[var(--brand-end)]" />
@@ -303,8 +309,8 @@ export default function SupportWidget() {
                   const showGap =
                     !prev ||
                     new Date(m.createdAt).getTime() -
-                      new Date(prev.createdAt).getTime() >
-                      5 * 60 * 1000;
+                    new Date(prev.createdAt).getTime() >
+                    5 * 60 * 1000;
                   return (
                     <div key={m.id} className={showGap ? "mt-2" : ""}>
                       <div
