@@ -1,3 +1,4 @@
+// src/layout/Navbar.tsx
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -10,6 +11,7 @@ import {
   MapPin,
   Menu,
   Package,
+  Heart,
 } from "lucide-react";
 import Container from "./Container";
 import { useCartStore } from "@/features/cart/store";
@@ -34,9 +36,6 @@ type Cat = {
   name: string;
   sub?: { slug: string; name: string }[];
 };
-
-/** ====== Tipos para autocompletado ====== */
-/* El tipo de sugerencias se mueve al componente SearchBox */
 
 /* Language switcher */
 function LangSwitcher() {
@@ -320,7 +319,7 @@ export default function Navbar() {
             onSearch={goToSearch}
           />
 
-          {/* Derecha: idioma/moneda/tema + cuenta + carrito */}
+          {/* Derecha: idioma/moneda/tema + cuenta + favoritos + carrito */}
           <div className="flex items-center gap-2 justify-self-end">
             <div className="hidden lg:flex items-center gap-2">
               <LangSwitcher />
@@ -414,6 +413,20 @@ export default function Navbar() {
                 )}
               </button>
             )}
+
+            {/* Favoritos */}
+            <Link
+              to="/wishlist"
+              aria-label="Ver favoritos"
+              className="
+                relative inline-flex items-center justify-center
+                rounded-lg hover:bg-[rgb(var(--card-2-rgb))]
+              "
+            >
+              <IconButton aria-label="Favoritos" className="h-9 w-9">
+                <Heart size={18} />
+              </IconButton>
+            </Link>
 
             {/* Carrito */}
             <Link
@@ -576,6 +589,19 @@ export default function Navbar() {
             <LangSwitcher />
             <CurrencySwitcher />
             <ThemeToggle />
+
+            {/* Favoritos móvil */}
+            <Link
+              to="/wishlist"
+              aria-label="Ver favoritos"
+              className="relative inline-flex items-center justify-center"
+            >
+              <IconButton aria-label="Favoritos" className="h-9 w-9">
+                <Heart size={18} />
+              </IconButton>
+            </Link>
+
+            {/* Carrito móvil */}
             <Link
               to="/cart"
               aria-label="Ir al carrito"

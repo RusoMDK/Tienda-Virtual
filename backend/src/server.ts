@@ -30,6 +30,7 @@ import geoPublicRoutes from "./routes/geo.public.js";
 import homeRoutes from "./routes/home.js";
 import mapRoutes from "./routes/mapRoutes.js";
 import searchRoutes from "./routes/search.js";
+import meWishlistRoutes from "./routes/me.wishlist.js";
 
 // 💬 Support
 import supportRoutes from "./routes/support.js";
@@ -123,6 +124,9 @@ await app.register(meOrdersRoutes);
 await app.register(twoFARoutes);
 await app.register(homeRoutes);
 await app.register(mapRoutes, { prefix: "/maps" });
+
+// Wishlist del usuario autenticado
+await app.register(meWishlistRoutes, { prefix: "/me/wishlist" });
 
 // 🔍 Buscador (searchProducts + searchSuggest)
 await app.register(searchRoutes, { prefix: "/search" });

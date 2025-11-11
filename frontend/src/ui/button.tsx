@@ -1,14 +1,27 @@
 import { ButtonHTMLAttributes, forwardRef } from "react";
+import { Slot } from "@radix-ui/react-slot";
 import { cn } from "../utils/cn";
 
 type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "ghost" | "destructive";
   size?: "sm" | "md" | "lg";
   full?: boolean;
+  /** Renderiza el hijo como raíz (Link, etc.) */
+  asChild?: boolean;
 };
 
 const Button = forwardRef<HTMLButtonElement, Props>(
-  ({ className, variant = "primary", size = "md", full, ...rest }, ref) => {
+  (
+    {
+      className,
+      variant = "primary",
+      size = "md",
+      full,
+      asChild = false,
+      ...rest
+    },
+    ref
+  ) => {
     const base =
       "inline-flex items-center justify-center rounded-xl font-medium select-none outline-none transition-all duration-150 " +
       "focus-visible:ring-2 ring-[rgb(var(--primary-rgb)/0.35)] disabled:opacity-60 disabled:cursor-not-allowed";
@@ -34,8 +47,10 @@ const Button = forwardRef<HTMLButtonElement, Props>(
 
     const w = full ? "w-full" : "";
 
+    const Comp = asChild ? Slot : "button";
+
     return (
-      <button
+      <Comp
         ref={ref}
         className={cn(base, sizes, variants, w, className)}
         {...rest}
@@ -43,4 +58,7 @@ const Button = forwardRef<HTMLButtonElement, Props>(
     );
   }
 );
+
+Button.displayName = "Button";
+
 export default Button;

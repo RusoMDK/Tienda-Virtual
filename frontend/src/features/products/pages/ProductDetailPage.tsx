@@ -10,7 +10,9 @@ import {
   Badge,
   Skeleton,
   Input,
+  IconButton,
 } from "@/ui";
+import { Heart } from "lucide-react";
 import { useToast } from "@/ui";
 import { useCartStore } from "@/features/cart/store";
 import {
@@ -19,6 +21,7 @@ import {
 } from "@/features/products/api";
 import { Price } from "@/features/currency/Price";
 import { ProductCardMinimal } from "@/features/products/components/ProductCardMinimal";
+import { useWishlist } from "@/features/wishlist/hooks";
 
 // ───────────────────────── helpers imágenes
 function normalizeImageEntry(x: any): string | null {
@@ -225,6 +228,12 @@ export default function ProductDetailPage() {
   const add = useCartStore((s) => s.add);
   const [qty, setQty] = useState(1);
 
+  const {
+    isFavorite: isWishlistFavorite,
+    toggleFavorite,
+    isUpdating: wishlistUpdating,
+  } = useWishlist();
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["product+related", slug],
     queryFn: async () => {
@@ -272,6 +281,40 @@ export default function ProductDetailPage() {
     [remaining]
   );
 
+  const handleToggleFavorite = useCallback(
+    async (productId: string) => {
+      const wasFav = isWishlistFavorite(productId);
+      try {
+        await toggleFavorite(productId);
+        toast({
+          title: wasFav
+            ? "Quitado de tu lista de deseos"
+            : "Añadido a tu lista de deseos",
+          variant: "success",
+        });
+      } catch (err: any) {
+        const status = err?.response?.status ?? err?.statusCode;
+        if (status === 401) {
+          toast({
+            title: "Inicia sesión para usar favoritos",
+            description:
+              "Crea una cuenta o inicia sesión para guardar tu lista.",
+            variant: "warning",
+          });
+          nav(
+            `/login?redirect=${encodeURIComponent(window.location.pathname)}`
+          );
+          return;
+        }
+        toast({
+          title: "No se pudo actualizar favoritos",
+          variant: "error",
+        });
+      }
+    },
+    [isWishlistFavorite, toggleFavorite, toast, nav]
+  );
+
   if (isLoading) {
     return (
       <Container className="py-6">
@@ -313,6 +356,7 @@ export default function ProductDetailPage() {
   const p = data.product;
   const images = collectProductImages(p);
   const canAdd = p.active && p.stock > 0 && remaining > 0 && qty > 0;
+  const isFav = isWishlistFavorite(p.id);
 
   function onAdd(buyNow: boolean) {
     if (!canAdd) {
@@ -382,32 +426,58 @@ export default function ProductDetailPage() {
             <h1 className="text-2xl md:text-3xl font-bold leading-tight">
               {p.name}
             </h1>
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label="Compartir producto"
-              onClick={async () => {
-                const url = window.location.href;
-                try {
-                  if (navigator.share) {
-                    await navigator.share({
-                      title: p.name,
-                      text: p.description,
-                      url,
-                    });
-                  } else {
-                    await navigator.clipboard.writeText(url);
-                    toast({
-                      title: "Enlace copiado",
-                      description: "Listo para compartir.",
-                      variant: "success",
-                    });
+            <div className="flex items-center gap-1.5">
+              <IconButton
+                size="sm"
+                variant="ghost"
+                className={`rounded-full border border-[rgb(var(--border-rgb))]/70 bg-black/5 hover:bg-black/10 ${
+                  isFav
+                    ? "text-red-500 border-red-500/60 bg-red-500/10 hover:bg-red-500/20"
+                    : ""
+                }`}
+                aria-label={
+                  isFav ? "Quitar de favoritos" : "Agregar a favoritos"
+                }
+                aria-pressed={isFav}
+                disabled={wishlistUpdating}
+                onClick={() => handleToggleFavorite(p.id)}
+              >
+                <Heart
+                  className={`h-4 w-4 ${
+                    isFav ? "fill-current" : "fill-transparent"
+                  }`}
+                />
+              </IconButton>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Compartir producto"
+                onClick={async () => {
+                  const url = window.location.href;
+                  try {
+                    if (navigator.share) {
+                      await navigator.share({
+                        title: p.name,
+                        text: p.description,
+                        url,
+                      });
+                    } else {
+                      await navigator.clipboard.writeText(url);
+                      toast({
+                        title: "Enlace copiado",
+                        description: "Listo para compartir.",
+                        variant: "success",
+                      });
+                    }
+                  } catch {
+                    // noop
                   }
-                } catch {}
-              }}
-            >
-              Compartir
-            </Button>
+                }}
+              >
+                Compartir
+              </Button>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -536,6 +606,9 @@ export default function ProductDetailPage() {
                   imageUrl={firstImage}
                   variant="compact"
                   aspect="landscape"
+                  isFavorite={isWishlistFavorite(r.id)}
+                  onToggleFavorite={() => handleToggleFavorite(r.id)}
+                  favoriteDisabled={wishlistUpdating}
                 />
               );
             })}
