@@ -1,8 +1,8 @@
 // src/layout/Navbar.tsx
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Input, IconButton, Badge, Dropdown } from "@/ui";
+import { Input, Badge, Dropdown } from "@/ui";
 import {
   ShoppingCart,
   Search,
@@ -21,6 +21,8 @@ import ThemeToggle from "@/theme/ThemeToggle";
 import { useCurrency } from "@/features/currency/CurrencyProvider";
 import { Price } from "@/features/currency/Price";
 import SearchBox from "@/features/Search/components/SearchBox";
+import { NotificationDropdown } from "@/features/notifications/components/NotificationDropdown";
+import { fetchWishlist, type WishlistItemDTO } from "@/features/wishlist/api";
 
 /* Utils */
 function initials(name?: string | null, email?: string | null) {
@@ -146,7 +148,6 @@ export default function Navbar() {
     setCat(sp.get("cat") || "all");
   }, [sp]);
 
-  // Helper centralizado para ir a /search
   function goToSearch(params?: { q?: string; cat?: string }) {
     const qRaw = (params?.q ?? term).trim();
     const c = params?.cat ?? cat;
@@ -172,6 +173,19 @@ export default function Navbar() {
     [items]
   );
 
+  // Animación del carrito cuando cambia el número de ítems
+  const [cartBump, setCartBump] = useState(false);
+  const lastCount = useRef(count);
+
+  useEffect(() => {
+    if (count > lastCount.current) {
+      setCartBump(true);
+      const t = setTimeout(() => setCartBump(false), 350);
+      return () => clearTimeout(t);
+    }
+    lastCount.current = count;
+  }, [count]);
+
   // Currency helpers
   const { currency, convert, fmt } = useCurrency();
   const totalCentsActive = useMemo(
@@ -192,7 +206,7 @@ export default function Navbar() {
   }, [currency, totalCentsActive, fmt]);
 
   // Auth
-  const { user, logout } = useAuth();
+  const { user, logout, accessToken } = useAuth();
 
   const [avatarError, setAvatarError] = useState(false);
   const avatarUrl = (user as any)?.avatarUrl as string | undefined;
@@ -200,7 +214,7 @@ export default function Navbar() {
     setAvatarError(false);
   }, [avatarUrl]);
 
-  // Categorías para la fila de atajos ("Todas las categorías", etc.)
+  // Categorías
   const {
     data: categories,
     isLoading: catsLoading,
@@ -219,6 +233,30 @@ export default function Navbar() {
     [categories]
   );
 
+  // Wishlist: mismo fetch y key que useWishlist
+  const { data: wishlistItems } = useQuery<WishlistItemDTO[]>({
+    queryKey: ["wishlist"],
+    enabled: !!user,
+    queryFn: fetchWishlist,
+    staleTime: 60_000,
+  });
+
+  const wishlistCount = wishlistItems?.length ?? 0;
+  const hasWishlist = wishlistCount > 0;
+
+  // Animación del corazón cuando aumenta la cantidad de favoritos
+  const [favBump, setFavBump] = useState(false);
+  const lastWishlistCount = useRef(wishlistCount);
+
+  useEffect(() => {
+    if (wishlistCount > lastWishlistCount.current) {
+      setFavBump(true);
+      const t = setTimeout(() => setFavBump(false), 350);
+      return () => clearTimeout(t);
+    }
+    lastWishlistCount.current = wishlistCount;
+  }, [wishlistCount]);
+
   const userInitials = user
     ? initials(user.name as any, user.email as any)
     : "U";
@@ -228,12 +266,41 @@ export default function Navbar() {
     ? `Hola, ${user.name?.split(" ")[0] || "usuario"}`
     : "Hola, identifícate";
 
+  // Hide / show navbar según scroll
+  const [navHidden, setNavHidden] = useState(false);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const current = window.scrollY || 0;
+      const prev = lastScrollY.current;
+      const diff = current - prev;
+
+      if (Math.abs(diff) < 4) return;
+
+      if (current < 40) {
+        setNavHidden(false);
+      } else if (diff > 0 && current > 80) {
+        setNavHidden(true);
+      } else if (diff < 0) {
+        setNavHidden(false);
+      }
+
+      lastScrollY.current = current;
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   return (
     <header
-      className="
+      className={`
         sticky top-0 z-40 shadow-sm
         bg-[rgb(var(--card-rgb)/0.9)] backdrop-blur-md
-      "
+        transition-transform duration-300
+        ${navHidden ? "-translate-y-full" : "translate-y-0"}
+      `}
     >
       {/* Barra superior info */}
       <div className="hidden md:block border-b border-[rgb(var(--border-rgb))]">
@@ -310,7 +377,7 @@ export default function Navbar() {
             </button>
           </div>
 
-          {/* Buscador grande (componente) */}
+          {/* Buscador grande */}
           <SearchBox
             term={term}
             setTerm={setTerm}
@@ -319,7 +386,7 @@ export default function Navbar() {
             onSearch={goToSearch}
           />
 
-          {/* Derecha: idioma/moneda/tema + cuenta + favoritos + carrito */}
+          {/* Derecha */}
           <div className="flex items-center gap-2 justify-self-end">
             <div className="hidden lg:flex items-center gap-2">
               <LangSwitcher />
@@ -351,10 +418,7 @@ export default function Navbar() {
                 ...(user
                   ? [
                       { label: "Mi cuenta", onSelect: () => nav("/me") },
-                      {
-                        label: "Mis pedidos",
-                        onSelect: () => nav("/orders"),
-                      },
+                      { label: "Mis pedidos", onSelect: () => nav("/orders") },
                       ...(user.role === "ADMIN"
                         ? [
                             {
@@ -388,6 +452,7 @@ export default function Navbar() {
                     ]),
               ]}
             />
+
             {/* Avatar extra en lg+ */}
             {user && (
               <button
@@ -414,18 +479,47 @@ export default function Navbar() {
               </button>
             )}
 
+            {/* Notificaciones */}
+            {user && (
+              <NotificationDropdown
+                accessToken={accessToken}
+                onViewAll={() => nav("/notifications")}
+              />
+            )}
+
             {/* Favoritos */}
             <Link
               to="/wishlist"
               aria-label="Ver favoritos"
               className="
-                relative inline-flex items-center justify-center
-                rounded-lg hover:bg-[rgb(var(--card-2-rgb))]
+                relative inline-flex h-9 w-9 items-center justify-center
+                rounded-full hover:bg-[rgb(var(--card-2-rgb))]
+                transition-colors
               "
             >
-              <IconButton aria-label="Favoritos" className="h-9 w-9">
-                <Heart size={18} />
-              </IconButton>
+              <Heart
+                size={18}
+                className={`
+                  ${favBump ? "nav-icon-bounce" : ""}
+                  ${
+                    hasWishlist
+                      ? "text-rose-500"
+                      : "text-[rgb(var(--fg-rgb)/0.9)]"
+                  }
+                `}
+                fill={hasWishlist ? "currentColor" : "none"}
+              />
+              {hasWishlist && (
+                <span
+                  className="
+                    absolute -top-1 right-0
+                    text-[9px] font-semibold
+                    text-[rgb(var(--fg-rgb)/0.85)]
+                  "
+                >
+                  {wishlistCount > 99 ? "99+" : wishlistCount}
+                </span>
+              )}
             </Link>
 
             {/* Carrito */}
@@ -433,13 +527,29 @@ export default function Navbar() {
               to="/cart"
               aria-label="Ir al carrito"
               className="
-                relative inline-flex items-center gap-1.5 px-2 py-1 rounded-lg
-                hover:bg-[rgb(var(--card-2-rgb))]
+                relative inline-flex items-center gap-1.5 px-2 py-1
+                rounded-full hover:bg-[rgb(var(--card-2-rgb))]
+                transition-colors
               "
             >
-              <IconButton aria-label="Carrito" className="shadow-sm h-9 w-9">
-                <ShoppingCart size={18} />
-              </IconButton>
+              <div
+                className={`
+                  relative inline-flex h-9 w-9 items-center justify-center rounded-full
+                  ${cartBump ? "nav-icon-bounce" : ""}
+                `}
+              >
+                <ShoppingCart
+                  size={18}
+                  className="text-[rgb(var(--fg-rgb)/0.95)]"
+                />
+                {count > 0 && (
+                  <span className="absolute -right-1 -top-1">
+                    <Badge className="bg-[rgb(var(--primary-rgb))] text-[rgb(var(--bg-rgb))] border-none">
+                      {count}
+                    </Badge>
+                  </span>
+                )}
+              </div>
               <div className="hidden xl:flex flex-col leading-tight text-xs lg:text-[13px]">
                 <span className="text-[rgb(var(--fg-rgb)/0.7)]">Total</span>
                 <span className="font-semibold">
@@ -450,20 +560,12 @@ export default function Navbar() {
                   )}
                 </span>
               </div>
-              {count > 0 && (
-                <span className="absolute -right-1 -top-1">
-                  <Badge className="bg-[rgb(var(--primary-rgb))] text-[rgb(var(--bg-rgb))] border-none">
-                    {count}
-                  </Badge>
-                </span>
-              )}
             </Link>
           </div>
         </Container>
 
-        {/* Segunda fila: links rápidos tipo Amazon */}
+        {/* Segunda fila */}
         <Container className="!max-w-none px-3 sm:px-4 md:px-6 lg:px-10 xl:px-14 hidden md:flex items-center gap-4 h-10 lg:h-11 text-[12px] lg:text-[13px] xl:text-sm text-[rgb(var(--fg-rgb)/0.9)]">
-          {/* Todas las categorías usando también Dropdown bonito */}
           <Dropdown
             trigger={({ open, toggle }) => (
               <button
@@ -548,9 +650,8 @@ export default function Navbar() {
         </Container>
       </div>
 
-      {/* Móvil: barra compacta + buscador full-width */}
+      {/* Móvil */}
       <div className="sm:hidden border-b border-[rgb(var(--border-rgb))]">
-        {/* Fila superior móvil */}
         <Container
           className="
             !max-w-none px-3 py-2
@@ -590,26 +691,66 @@ export default function Navbar() {
             <CurrencySwitcher />
             <ThemeToggle />
 
+            {/* Notificaciones móvil */}
+            {user && (
+              <NotificationDropdown
+                accessToken={accessToken}
+                onViewAll={() => nav("/notifications")}
+              />
+            )}
+
             {/* Favoritos móvil */}
             <Link
               to="/wishlist"
               aria-label="Ver favoritos"
-              className="relative inline-flex items-center justify-center"
+              className="
+                relative inline-flex h-9 w-9 items-center justify-center
+                rounded-full hover:bg-[rgb(var(--card-2-rgb))]
+                transition-colors
+              "
             >
-              <IconButton aria-label="Favoritos" className="h-9 w-9">
-                <Heart size={18} />
-              </IconButton>
+              <Heart
+                size={18}
+                className={`
+                  ${favBump ? "nav-icon-bounce" : ""}
+                  ${
+                    hasWishlist
+                      ? "text-rose-500"
+                      : "text-[rgb(var(--fg-rgb)/0.9)]"
+                  }
+                `}
+                fill={hasWishlist ? "currentColor" : "none"}
+              />
+              {hasWishlist && (
+                <span
+                  className="
+                    absolute -top-1 right-0
+                    text-[9px] font-semibold
+                    text-[rgb(var(--fg-rgb)/0.85)]
+                  "
+                >
+                  {wishlistCount > 99 ? "99+" : wishlistCount}
+                </span>
+              )}
             </Link>
 
             {/* Carrito móvil */}
             <Link
               to="/cart"
               aria-label="Ir al carrito"
-              className="relative inline-flex items-center justify-center"
+              className="
+                relative inline-flex h-9 w-9 items-center justify-center
+                rounded-full hover:bg-[rgb(var(--card-2-rgb))]
+                transition-colors
+              "
             >
-              <IconButton aria-label="Carrito" className="h-9 w-9">
-                <ShoppingCart size={18} />
-              </IconButton>
+              <ShoppingCart
+                size={18}
+                className={`
+                  text-[rgb(var(--fg-rgb)/0.95)]
+                  ${cartBump ? "nav-icon-bounce" : ""}
+                `}
+              />
               {count > 0 && (
                 <span className="absolute -right-1 -top-1">
                   <Badge className="bg-[rgb(var(--primary-rgb))] text-[rgb(var(--bg-rgb))] border-none text-[10px]">
@@ -621,7 +762,7 @@ export default function Navbar() {
           </div>
         </Container>
 
-        {/* Buscador móvil (simple, sin sugerencias) */}
+        {/* Buscador móvil */}
         <Container className="!max-w-none px-3 pb-3 space-y-2">
           <form
             onSubmit={handleSearchSubmit}

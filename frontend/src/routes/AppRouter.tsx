@@ -31,7 +31,7 @@ import AdminUsersPage from "@/features/admin/pages/AdminUsersPage";
 import AdminProductImportPage from "@/features/admin/pages/AdminProductImportPage";
 import AdminFxPage from "@/features/admin/pages/AdminFxPage";
 import AdminSupportPage from "@/features/admin/pages/AdminSupportPage";
-import AdminHomePage from "@/features/admin/pages/AdminHomePage"; // 👈 tu página para secciones de home
+import AdminHomePage from "@/features/admin/pages/AdminHomePage";
 
 // Support (thread page)
 import SupportConversationPage from "@/features/support/pages/SupportConversationPage";
@@ -63,6 +63,7 @@ import AddressesPage from "@/features/account/pages/AddressesPage";
 import OrdersPage from "@/features/account/pages/OrdersPage";
 import OrderDetailPage from "@/features/account/pages/OrderDetailPage";
 import SecurityPage from "@/features/account/pages/SecurityPage";
+import NotificationsPage from "@/features/notifications/pages/NotificationsPage";
 
 //Search
 import SearchPage from "../features/Search/page/SearchPage";
@@ -291,6 +292,14 @@ export default function AppRouter() {
                 element={
                   <ProtectedRoute>
                     <Navigate to="/account/profile" replace />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/notifications"
+                element={
+                  <ProtectedRoute>
+                    <NotificationsPage />
                   </ProtectedRoute>
                 }
               />
