@@ -1,12 +1,14 @@
 // src/routes/products.ts
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { ProductCondition, ConditionGrade } from "@prisma/client";
+import {
+  ProductCondition,
+  ConditionGrade,
+  NotificationType,
+} from "@prisma/client";
 import { requireRole } from "../utils/rbac.js";
+import { notifyUserInApp } from "../services/notificationService.js";
 
-// ─────────────────────────────────────────────
-// Schemas Zod para crear/actualizar producto
-// (solo campos editables por admin)
 // ─────────────────────────────────────────────
 
 const baseProductEditableSchema = z.object({
@@ -15,60 +17,45 @@ const baseProductEditableSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
 
-  // Precio / stock / estado
-  price: z.number().int().nonnegative(), // centavos
+  price: z.number().int().nonnegative(),
   stock: z.number().int().nonnegative().optional(),
-  currency: z.string().min(1).optional(), // default "usd"
+  currency: z.string().min(1).optional(),
   active: z.boolean().optional(),
 
-  // Categoría
   categoryId: z.string().nullable().optional(),
 
-  // Marca / tipo / modelo
   brand: z.string().optional(),
   productType: z.string().optional(),
   modelName: z.string().optional(),
 
-  // Identificadores físicos
   barcode: z.string().optional(),
   weightGrams: z.number().int().nonnegative().optional(),
   widthMm: z.number().int().nonnegative().optional(),
   heightMm: z.number().int().nonnegative().optional(),
   lengthMm: z.number().int().nonnegative().optional(),
 
-  // Condición
-  condition: z.nativeEnum(ProductCondition).optional(), // default NEW
+  condition: z.nativeEnum(ProductCondition).optional(),
   conditionGrade: z.nativeEnum(ConditionGrade).optional(),
   conditionNote: z.string().optional(),
 
-  // Atributos visuales
   mainColor: z.string().optional(),
-  colorVariants: z.array(z.string()).optional(), // se guarda como Json
+  colorVariants: z.array(z.string()).optional(),
 
-  // Envío
-  homeDeliveryAvailable: z.boolean().optional(), // default true
-  storePickupAvailable: z.boolean().optional(), // default false
-  deliveryArea: z.any().optional(), // Json
+  homeDeliveryAvailable: z.boolean().optional(),
+  storePickupAvailable: z.boolean().optional(),
+  deliveryArea: z.any().optional(),
 
-  // Garantía
   warrantyMonths: z.number().int().nonnegative().optional(),
   warrantyType: z.string().optional(),
   warrantyDescription: z.string().optional(),
 
-  // Tags / metadata
-  tags: z.array(z.string()).optional(), // text[]
-  metadata: z.any().optional(), // Json
+  tags: z.array(z.string()).optional(),
+  metadata: z.any().optional(),
 });
 
-// Para crear (POST)
 const productCreateSchema = baseProductEditableSchema;
-
-// Para actualizar (PATCH) → todos los campos opcionales
 const productUpdateSchema = baseProductEditableSchema.partial();
 
-// ─────────────────────────────────────────────
-// Query para listados públicos
-// ─────────────────────────────────────────────
 const listQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(60).default(12),
@@ -82,18 +69,14 @@ const listQuery = z.object({
       "rating:desc",
     ])
     .default("createdAt:desc"),
-  category: z.string().optional(), // slug de categoría padre
-  subcategory: z.string().optional(), // slug de subcategoría (hija)
-
-  // filtros extra básicos
+  category: z.string().optional(),
+  subcategory: z.string().optional(),
   brand: z.string().optional(),
   productType: z.string().optional(),
 });
 
 export default async function products(app: FastifyInstance) {
-  // ─────────────────────────────────────────
-  // Listado público con filtros básicos
-  // ─────────────────────────────────────────
+  // Listado público
   app.get("/products", async (req, reply) => {
     const {
       page,
@@ -106,7 +89,6 @@ export default async function products(app: FastifyInstance) {
       productType,
     } = listQuery.parse(req.query);
 
-    // WHERE por categoría (similar a lo que ya tenías)
     let categoryWhere: Record<string, any> | undefined;
     if (subcategory) {
       const sub = await app.prisma.category.findUnique({
@@ -183,14 +165,16 @@ export default async function products(app: FastifyInstance) {
           ratingCount: true,
           images: {
             select: { url: true, isPrimary: true, position: true },
-            orderBy: [{ isPrimary: "desc" }, { position: "asc" }],
+            orderBy: [
+              { isPrimary: "desc" as const },
+              { position: "asc" as const },
+            ],
             take: 1,
           },
         },
       }),
     ]);
 
-    // Mapeamos imagen principal a imageUrl
     const items = rawItems.map((p) => ({
       id: p.id,
       slug: p.slug,
@@ -202,8 +186,6 @@ export default async function products(app: FastifyInstance) {
       active: p.active,
       createdAt: p.createdAt,
       imageUrl: p.images[0]?.url ?? null,
-
-      // info extra útil para el front (no rompe nada)
       brand: p.brand,
       productType: p.productType,
       modelName: p.modelName,
@@ -216,9 +198,7 @@ export default async function products(app: FastifyInstance) {
     return { items, page, pageSize, total, totalPages };
   });
 
-  // ─────────────────────────────────────────
-  // Detalle por slug (con todas las imágenes)
-  // ─────────────────────────────────────────
+  // Detalle
   app.get("/products/:slug", async (req, reply) => {
     const { slug } = req.params as { slug: string };
 
@@ -233,7 +213,10 @@ export default async function products(app: FastifyInstance) {
             alt: true,
             publicId: true,
           },
-          orderBy: [{ isPrimary: "desc" }, { position: "asc" }],
+          orderBy: [
+            { isPrimary: "desc" as const },
+            { position: "asc" as const },
+          ],
         },
         category: {
           select: {
@@ -305,10 +288,7 @@ export default async function products(app: FastifyInstance) {
       ratingAvg: p.ratingAvg,
       ratingCount: p.ratingCount,
 
-      // Para compatibilidad con lo que tenías:
-      images: p.images.map((i) => i.url), // array de URLs
-
-      // Y además, versión "pro" con toda la info:
+      images: p.images.map((i) => i.url),
       gallery: p.images.map((i) => ({
         url: i.url,
         alt: i.alt,
@@ -324,16 +304,13 @@ export default async function products(app: FastifyInstance) {
     };
   });
 
-  // ─────────────────────────────────────────
-  // CRUD ADMIN: crear producto
-  // ─────────────────────────────────────────
+  // Crear producto (ADMIN)
   app.post(
     "/products",
     { preHandler: [app.authenticate, requireRole("ADMIN")] },
     async (req, reply) => {
       const body = productCreateSchema.parse(req.body);
 
-      // Normalizaciones / defaults
       const normalizedSlug = body.slug.trim().toLowerCase();
       const normalizedSku = body.sku?.trim() || undefined;
 
@@ -393,15 +370,19 @@ export default async function products(app: FastifyInstance) {
     }
   );
 
-  // ─────────────────────────────────────────
-  // CRUD ADMIN: actualizar producto
-  // ─────────────────────────────────────────
+  // Actualizar producto (ADMIN) + notifs wishlist
   app.patch(
     "/products/:id",
     { preHandler: [app.authenticate, requireRole("ADMIN")] },
-    async (req) => {
+    async (req, reply) => {
       const { id } = req.params as { id: string };
       const body = productUpdateSchema.parse(req.body);
+
+      // Viejos valores para comparar
+      const existing = await app.prisma.product.findUnique({
+        where: { id },
+        select: { price: true, stock: true, name: true, currency: true },
+      });
 
       const data: any = {};
 
@@ -515,13 +496,76 @@ export default async function products(app: FastifyInstance) {
         where: { id },
         data,
       });
+
+      // 🔔 Notificaciones de wishlist (precio / stock)
+      if (existing) {
+        const oldPrice = existing.price;
+        const newPrice = updated.price;
+        const oldStock = existing.stock;
+        const newStock = updated.stock;
+
+        const priceDropped = body.price !== undefined && newPrice < oldPrice;
+        const backInStock =
+          body.stock !== undefined && oldStock <= 0 && newStock > 0;
+
+        if (priceDropped || backInStock) {
+          try {
+            const wishlistItems = await app.prisma.wishlistItem.findMany({
+              where: { productId: id },
+              select: {
+                userId: true,
+                priceAtAdd: true,
+              },
+            });
+
+            if (wishlistItems.length > 0) {
+              const promises = wishlistItems.map((item) => {
+                const type = priceDropped
+                  ? NotificationType.WISHLIST_ITEM_ON_SALE
+                  : NotificationType.WISHLIST_ITEM_BACK_IN_STOCK;
+
+                const title = priceDropped
+                  ? "Un favorito bajó de precio"
+                  : "Un favorito volvió a estar disponible";
+
+                const bodyText = priceDropped
+                  ? `El producto "${existing.name}" en tu lista de deseos ha bajado de precio.`
+                  : `El producto "${existing.name}" en tu lista de deseos volvió a estar disponible.`;
+
+                return notifyUserInApp(app.prisma, {
+                  userId: item.userId,
+                  type,
+                  title,
+                  body: bodyText,
+                  data: {
+                    productId: id,
+                    productName: existing.name,
+                    oldPrice,
+                    newPrice,
+                    oldStock,
+                    newStock,
+                    priceAtAdd: item.priceAtAdd,
+                    currency: existing.currency,
+                  },
+                });
+              });
+
+              await Promise.allSettled(promises);
+            }
+          } catch (err) {
+            req.log.error(
+              { err, productId: id },
+              "Failed to send wishlist notifications on product update"
+            );
+          }
+        }
+      }
+
       return updated;
     }
   );
 
-  // ─────────────────────────────────────────
-  // CRUD ADMIN: eliminar producto
-  // ─────────────────────────────────────────
+  // Eliminar producto (ADMIN)
   app.delete(
     "/products/:id",
     { preHandler: [app.authenticate, requireRole("ADMIN")] },

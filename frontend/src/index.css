@@ -129,3 +129,56 @@ input[type="range"].price-range::-moz-range-track {
 html {
   scroll-behavior: smooth;
 }
+
+/* --- Navbar icon animations --- */
+
+@keyframes nav-icon-bounce {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  20% {
+    transform: translateY(-2px) scale(1.05);
+  }
+  40% {
+    transform: translateY(1px) scale(0.98);
+  }
+  60% {
+    transform: translateY(-1px) scale(1.02);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+.nav-icon-bounce {
+  animation: nav-icon-bounce 0.35s ease-out;
+}
+
+@keyframes nav-icon-ring {
+  0% {
+    transform: rotate(0deg);
+  }
+  15% {
+    transform: rotate(12deg);
+  }
+  30% {
+    transform: rotate(-10deg);
+  }
+  45% {
+    transform: rotate(8deg);
+  }
+  60% {
+    transform: rotate(-6deg);
+  }
+  75% {
+    transform: rotate(3deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.nav-icon-ring {
+  animation: nav-icon-ring 0.55s ease-out;
+  transform-origin: 50% 0%;
+}

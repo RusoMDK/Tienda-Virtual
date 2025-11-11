@@ -5,6 +5,8 @@ import { env } from "../env.js";
 import { authenticator } from "otplib";
 import argon2 from "argon2";
 import { newTokenString } from "../utils/tokens.js";
+import { NotificationType } from "@prisma/client";
+import { notifyUserInApp } from "../services/notificationService.js";
 
 /** TTL parser seguro: "10s", "15m", "2h", "7d" (case-insensitive).
  *  Si viene vacío/undefined o formato inválido → fallback 7d.
@@ -50,7 +52,6 @@ export default async function authRoutes(app: FastifyInstance) {
     const refreshMs = parseTtlMs(env.JWT_REFRESH_TTL);
     const expiresAt = new Date(Date.now() + refreshMs);
 
-    // Generación aleatoria + reintentos por si choca unique(token)
     let createdToken: string | null = null;
     for (let i = 0; i < 3; i++) {
       const candidate = newTokenString();
@@ -66,7 +67,7 @@ export default async function authRoutes(app: FastifyInstance) {
         break;
       } catch (e: any) {
         if (e?.code === "P2002" && e?.meta?.target?.includes?.("token")) {
-          continue; // intenta otro token
+          continue;
         }
         throw e;
       }
@@ -81,8 +82,8 @@ export default async function authRoutes(app: FastifyInstance) {
       httpOnly: true,
       secure: env.COOKIE_SECURE,
       sameSite: env.COOKIE_SAME_SITE as any,
-      domain: env.COOKIE_DOMAIN, // undefined en local → sin Domain=
-      path: "/", // cookie disponible en toda la API
+      domain: env.COOKIE_DOMAIN,
+      path: "/",
       maxAge: Math.floor(refreshMs / 1000),
     });
 
@@ -135,7 +136,6 @@ export default async function authRoutes(app: FastifyInstance) {
         const { email, password, totp } = LoginSchema.parse(req.body ?? {});
 
         const user = await app.prisma.user.findUnique({ where: { email } });
-        // Mensaje genérico para no filtrar usuarios
         if (!user || !user.passwordHash)
           return reply.unauthorized("Credenciales inválidas");
 
@@ -154,7 +154,26 @@ export default async function authRoutes(app: FastifyInstance) {
           user.role
         );
 
-        // (1) Devolver también el usuario “seguro” para el frontend
+        // 🔔 Notificación: nuevo inicio de sesión
+        try {
+          await notifyUserInApp(app.prisma, {
+            userId: user.id,
+            type: NotificationType.NEW_LOGIN,
+            title: "Nuevo inicio de sesión",
+            body: "Se inició sesión en tu cuenta.",
+            data: {
+              ip: req.ip,
+              userAgent: req.headers["user-agent"] || null,
+              at: new Date().toISOString(),
+            },
+          });
+        } catch (err) {
+          req.log.error(
+            { err },
+            "Failed to create NEW_LOGIN notification (/auth/login)"
+          );
+        }
+
         const userSafe = {
           id: user.id,
           email: user.email,
@@ -172,7 +191,7 @@ export default async function authRoutes(app: FastifyInstance) {
   );
 
   // =========================
-  // REFRESH (rotación + reutilización)
+  // REFRESH
   // =========================
   app.post(
     "/auth/refresh",
@@ -185,14 +204,11 @@ export default async function authRoutes(app: FastifyInstance) {
           return reply.unauthorized();
         }
 
-        // Refresh tokens ahora son opacos: se validan solo contra BD.
         const stored = await app.prisma.refreshToken.findUnique({
           where: { token },
         });
 
         if (!stored) {
-          // Reutilización detectada o token inválido → opcionalmente revocar todos
-          // Si el token antiguamente era JWT, intentamos extraer sub para "limpiar".
           try {
             if (token.includes(".")) {
               const decoded: any = app.jwt.decode(token);
@@ -208,9 +224,7 @@ export default async function authRoutes(app: FastifyInstance) {
                 );
               }
             }
-          } catch {
-            // ignoramos
-          }
+          } catch {}
           reply.header("Cache-Control", "no-store");
           return reply.unauthorized();
         }
@@ -228,13 +242,11 @@ export default async function authRoutes(app: FastifyInstance) {
           return reply.unauthorized();
         }
 
-        // Rotación segura: revoca el viejo
         await app.prisma.refreshToken.update({
           where: { token },
           data: { revoked: true },
         });
 
-        // Crea uno nuevo (opaco) con reintentos anti-colisión
         const refreshMs = parseTtlMs(env.JWT_REFRESH_TTL);
         const expiresAt = new Date(Date.now() + refreshMs);
 
@@ -253,7 +265,7 @@ export default async function authRoutes(app: FastifyInstance) {
             break;
           } catch (e: any) {
             if (e?.code === "P2002" && e?.meta?.target?.includes?.("token")) {
-              continue; // intenta otro
+              continue;
             }
             throw e;
           }
@@ -264,14 +276,17 @@ export default async function authRoutes(app: FastifyInstance) {
           return reply.unauthorized();
         }
 
-        const accessToken = app.signAccess({ sub: user.id, role: user.role });
+        const accessToken = app.signAccess({
+          sub: user.id,
+          role: user.role,
+        });
 
         reply.setCookie("refresh_token", createdToken, {
           httpOnly: true,
           secure: env.COOKIE_SECURE,
           sameSite: env.COOKIE_SAME_SITE as any,
           domain: env.COOKIE_DOMAIN,
-          path: "/", // consistente con login
+          path: "/",
           maxAge: Math.floor(refreshMs / 1000),
         });
 
@@ -297,10 +312,9 @@ export default async function authRoutes(app: FastifyInstance) {
           data: { revoked: true },
         });
       }
-      // Limpia cookie usando mismos atributos clave
       reply.clearCookie("refresh_token", {
         path: "/",
-        domain: env.COOKIE_DOMAIN, // undefined en local
+        domain: env.COOKIE_DOMAIN,
       });
       reply.header("Cache-Control", "no-store");
       return { ok: true };
@@ -312,7 +326,7 @@ export default async function authRoutes(app: FastifyInstance) {
   });
 
   // =========================
-  // 2FA (TOTP)
+  // 2FA (TOTP) flujo /auth/*
   // =========================
   app.post(
     "/auth/2fa/setup",
@@ -358,6 +372,26 @@ export default async function authRoutes(app: FastifyInstance) {
           where: { id: userId },
           data: { twoFactorEnabled: true },
         });
+
+        // 🔔 Notificación de seguridad: 2FA activado
+        try {
+          await notifyUserInApp(app.prisma, {
+            userId,
+            type: NotificationType.ACCOUNT_PASSWORD_CHANGED,
+            title: "Autenticación en dos pasos activada",
+            body: "Has activado la verificación en dos pasos (2FA) en tu cuenta.",
+            data: {
+              at: new Date().toISOString(),
+              kind: "2FA_ENABLED",
+            },
+          });
+        } catch (err) {
+          req.log.error(
+            { err },
+            "Failed to create 2FA enabled notification (/auth/2fa/enable)"
+          );
+        }
+
         return { enabled: true };
       } catch (err: any) {
         if (err?.issues?.[0]?.message)
@@ -386,6 +420,26 @@ export default async function authRoutes(app: FastifyInstance) {
           where: { id: userId },
           data: { twoFactorEnabled: false, twoFactorSecret: null },
         });
+
+        // 🔔 Notificación de seguridad: 2FA desactivado
+        try {
+          await notifyUserInApp(app.prisma, {
+            userId,
+            type: NotificationType.ACCOUNT_PASSWORD_CHANGED,
+            title: "Autenticación en dos pasos desactivada",
+            body: "Has desactivado la verificación en dos pasos (2FA) en tu cuenta.",
+            data: {
+              at: new Date().toISOString(),
+              kind: "2FA_DISABLED",
+            },
+          });
+        } catch (err) {
+          req.log.error(
+            { err },
+            "Failed to create 2FA disabled notification (/auth/2fa/disable)"
+          );
+        }
+
         return { enabled: false };
       } catch (err: any) {
         if (err?.issues?.[0]?.message)

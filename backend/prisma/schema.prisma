@@ -18,6 +18,29 @@ enum Role {
   CUSTOMER
 }
 
+// 🔔 Notificaciones
+enum NotificationType {
+  ORDER_CREATED
+  ORDER_PAID
+  ORDER_SHIPPED
+  ORDER_DELIVERED
+  ORDER_CANCELLED
+  PAYMENT_FAILED
+  ACCOUNT_PASSWORD_CHANGED
+  ACCOUNT_EMAIL_CHANGED
+  NEW_LOGIN
+  WISHLIST_ITEM_ON_SALE
+  WISHLIST_ITEM_BACK_IN_STOCK
+  PROMOTION_COUPON
+  SUPPORT_MESSAGE_REPLY
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  PUSH
+}
+
 model User {
   id    String @id @default(cuid())
   email String @unique
@@ -61,6 +84,10 @@ model User {
   // 🔥 Wishlist / favoritos
   wishlistItems WishlistItem[]
 
+  // 🔔 Notificaciones
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
+
   // ───── Soporte (relaciones inversas) ─────
   // Conversaciones donde el usuario es el cliente
   conversations Conversation[] @relation("ConversationUser")
@@ -89,6 +116,49 @@ model RefreshToken {
 
   @@index([userId, revoked])
   @@index([expiresAt])
+}
+
+// 🔔 NOTIFICATIONS
+model Notification {
+  id     String @id @default(cuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  type    NotificationType
+  channel NotificationChannel @default(IN_APP)
+
+  title String
+  body  String
+  data  Json?
+
+  isRead   Boolean  @default(false)
+  readAt   DateTime?
+  archived Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, archived, isRead, createdAt(sort: Desc)])
+  @@index([userId, createdAt])
+}
+
+model NotificationPreference {
+  id     String @id @default(cuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
+
+  // Email
+  emailOrderUpdates    Boolean @default(true)
+  emailSecurityAlerts  Boolean @default(true)
+  emailPromotions      Boolean @default(false)
+
+  // In-app
+  inAppOrderUpdates    Boolean @default(true)
+  inAppSecurityAlerts  Boolean @default(true)
+  inAppPromotions      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 /**

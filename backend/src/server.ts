@@ -31,6 +31,7 @@ import homeRoutes from "./routes/home.js";
 import mapRoutes from "./routes/mapRoutes.js";
 import searchRoutes from "./routes/search.js";
 import meWishlistRoutes from "./routes/me.wishlist.js";
+import meNotificationsRoutes from "./routes/me.notifications.js";
 
 // 💬 Support
 import supportRoutes from "./routes/support.js";
@@ -127,6 +128,9 @@ await app.register(mapRoutes, { prefix: "/maps" });
 
 // Wishlist del usuario autenticado
 await app.register(meWishlistRoutes, { prefix: "/me/wishlist" });
+
+// Notificaciones del usuario autenticado
+await app.register(meNotificationsRoutes, { prefix: "/me/notifications" });
 
 // 🔍 Buscador (searchProducts + searchSuggest)
 await app.register(searchRoutes, { prefix: "/search" });
