@@ -48,8 +48,8 @@ import RegisterPage from "@/features/auth/pages/RegisterPage";
 import LegalTermsPage from "@/features/legal/pages/LegalTermsPage";
 import LegalPrivacyPage from "@/features/legal/pages/LegalPrivacyPage";
 import ContactPage from "@/features/legal/pages/ContactPage";
-// ✅ Help (centro de ayuda público)
 import HelpPage from "@/features/Help/pages/HelpPage";
+import WishlistPage from "@/features/wishlist/pages/WishlistPage";
 
 // Checkout
 import CheckoutPage from "@/features/checkout/pages/CheckoutPage";
@@ -246,6 +246,8 @@ export default function AppRouter() {
                   </GuestOnly>
                 }
               />
+
+              <Route path="/wishlist" element={<WishlistPage />} />
 
               {/* Legales, contacto y ayuda (PÚBLICAS) */}
               <Route path="/legal/terms" element={<LegalTermsPage />} />

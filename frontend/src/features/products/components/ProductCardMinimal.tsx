@@ -1,6 +1,9 @@
+// src/features/products/components/ProductCardMinimal.tsx
 import { Link } from "react-router-dom";
+import { Heart } from "lucide-react";
 import { Price } from "@/features/currency/Price";
 import { cn } from "@/utils/cn";
+import { IconButton } from "@/ui";
 
 type ProductCardMinimalProps = {
   to: string;
@@ -19,6 +22,16 @@ type ProductCardMinimalProps = {
   /** "landscape" (4/3) o "square" */
   aspect?: "landscape" | "square";
   className?: string;
+
+  /** Estado de favorito (si no lo pasas, el icono no se rellena) */
+  isFavorite?: boolean;
+  /**
+   * Si lo pasas, se muestra el botón de corazón.
+   * El padre controla el estado (añadir / quitar de wishlist).
+   */
+  onToggleFavorite?: () => void;
+  /** Para deshabilitar el botón (ej: mientras hace request) */
+  favoriteDisabled?: boolean;
 };
 
 export function ProductCardMinimal({
@@ -33,11 +46,16 @@ export function ProductCardMinimal({
   variant = "grid",
   aspect = "landscape",
   className,
+  isFavorite,
+  onToggleFavorite,
+  favoriteDisabled,
 }: ProductCardMinimalProps) {
   const safeImage = imageUrl || "https://placehold.co/800x600?text=Sin+foto";
   const isCompact = variant === "compact";
   const aspectCls = aspect === "square" ? "aspect-square" : "aspect-[4/3]";
   const currencyCode = (currency || "USD").toUpperCase();
+
+  const showFavorite = typeof onToggleFavorite === "function";
 
   return (
     <Link
@@ -51,6 +69,41 @@ export function ProductCardMinimal({
       )}
       title={name}
     >
+      {/* Botón de favoritos (opcional, sólo si se pasa onToggleFavorite) */}
+      {showFavorite && (
+        <div className="absolute right-2 top-2 z-10">
+          <IconButton
+            size="sm"
+            variant="ghost"
+            className={cn(
+              "rounded-full border border-[rgb(var(--border-rgb))]/70",
+              "bg-black/50 backdrop-blur text-white",
+              "hover:bg-black/70",
+              isFavorite &&
+                "bg-red-500 text-white border-red-500 hover:bg-red-600"
+            )}
+            disabled={favoriteDisabled}
+            aria-label={
+              isFavorite ? "Quitar de favoritos" : "Agregar a favoritos"
+            }
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!favoriteDisabled && onToggleFavorite) {
+                onToggleFavorite();
+              }
+            }}
+          >
+            <Heart
+              className={cn(
+                "h-4 w-4",
+                isFavorite ? "fill-current" : "fill-transparent"
+              )}
+            />
+          </IconButton>
+        </div>
+      )}
+
       {/* Imagen */}
       <div
         className={cn(
