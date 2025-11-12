@@ -59,6 +59,7 @@ export default function SupportThread({ id }: { id?: string }) {
       toast({ title: "No se pudo asignar", variant: "error" });
     }
   }
+
   async function unassign() {
     try {
       await assignMut.mutateAsync(null);
@@ -300,22 +301,26 @@ function HeaderBtn({
   );
 }
 
-function StatusPill({ status }: { status: ConvStatus }) {
-  const map: Record<ConvStatus, { label: string; icon: any; klass: string }> = {
+function StatusPill({ status }: { status?: ConvStatus | null }) {
+  const map: Record<string, { label: string; icon: any; klass: string }> = {
     OPEN: { label: "Abierto", icon: AlertCircle, klass: "text-emerald-600" },
     PENDING: { label: "Pendiente", icon: AlertCircle, klass: "text-amber-600" },
     RESOLVED: { label: "Resuelto", icon: CheckCircle2, klass: "text-sky-600" },
     CLOSED: { label: "Cerrado", icon: CheckCircle2, klass: "text-zinc-600" },
   };
-  const Icon = map[status].icon;
+
+  const fallback = {
+    label: "Estado desconocido",
+    icon: AlertCircle,
+    klass: "text-zinc-600",
+  };
+
+  const meta = status ? map[status as string] ?? fallback : fallback;
+  const Icon = meta.icon;
+
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 text-sm",
-        map[status].klass
-      )}
-    >
-      <Icon size={16} /> {map[status].label}
+    <span className={cn("inline-flex items-center gap-1 text-sm", meta.klass)}>
+      <Icon size={16} /> {meta.label}
     </span>
   );
 }
