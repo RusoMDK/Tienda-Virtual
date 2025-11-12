@@ -247,19 +247,16 @@ export default function ProductDetailPage() {
     },
   });
 
-  const getCartQty = useCallback((productId?: string) => {
-    if (!productId) return 0;
-    const it = useCartStore
-      .getState()
-      .items.find((x) => x.productId === productId);
-    return it?.qty ?? 0;
-  }, []);
+  // Suscripción al carrito: cuántas unidades de este producto hay ahora mismo
+  const cartQty = useCartStore((s) =>
+    slug ? s.items.find((x) => x.slug === slug)?.qty ?? 0 : 0
+  );
 
   const currentProductId = data?.product?.id;
   const stock = data?.product?.stock ?? 0;
-  const alreadyInCart = getCartQty(currentProductId);
-  const remaining = Math.max(0, stock - alreadyInCart);
+  const remaining = Math.max(0, stock - cartQty);
 
+  // Clampeamos la cantidad cuando cambia el stock restante
   useEffect(() => {
     setQty((q) => {
       if (remaining <= 0) return 1;
@@ -367,7 +364,13 @@ export default function ProductDetailPage() {
       });
       return;
     }
-    const before = getCartQty(p.id);
+
+    const getCartQtyRaw = () =>
+      useCartStore.getState().items.find((x) => x.productId === p.id)?.qty ?? 0;
+
+    const before = getCartQtyRaw();
+
+    // Guardamos imageUrl + currency en el carrito
     add(
       {
         productId: p.id,
@@ -375,10 +378,13 @@ export default function ProductDetailPage() {
         name: p.name,
         price: p.price,
         maxStock: p.stock,
+        imageUrl: images[0],
+        currency: p.currency || "USD",
       },
       qty
     );
-    const after = getCartQty(p.id);
+
+    const after = getCartQtyRaw();
     const delta = Math.max(0, after - before);
     const availableBefore = Math.max(0, p.stock - before);
 
