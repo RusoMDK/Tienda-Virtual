@@ -17,6 +17,9 @@ import { notifyUserInApp } from "../services/notificationService.js";
  *   await app.register(supportRoutes, { prefix: "/support" });
  */
 export default async function supportRoutes(app: FastifyInstance) {
+  // ─────────────────────────────────────────────────────────
+  // Infraestructura SSE (staff / por conversación)
+  // ─────────────────────────────────────────────────────────
   type Sink = (payload: any) => void;
   const staffSinks = new Set<Sink>();
   const convSinks = new Map<string, Set<Sink>>();
@@ -28,6 +31,7 @@ export default async function supportRoutes(app: FastifyInstance) {
       } catch {}
     }
   }
+
   function publishToConv(conversationId: string, event: any) {
     const set = convSinks.get(conversationId);
     if (!set) return;
@@ -44,11 +48,81 @@ export default async function supportRoutes(app: FastifyInstance) {
     return app.jwt.verify(token, { issuer: "tienda-api", audience: "web" });
   }
 
-  // ... (todo lo anterior se mantiene IGUAL hasta la ruta de mensajes)
-  // Para no hacer esto eterno, continúo desde la parte relevante completa:
+  // ─────────────────────────────────────────────────────────
+  // Listar conversaciones (inbox staff)
+  // GET /support/conversations?box=unassigned|mine|open|closed|all&sort=...&p=1&ps=20
+  // ─────────────────────────────────────────────────────────
+  app.get("/conversations", { preHandler: [app.requireStaff] }, async (req) => {
+    const me = req.user as { sub: string; role?: Role };
+
+    const q = req.query as any;
+
+    type Box = "unassigned" | "mine" | "open" | "closed" | "all";
+    const boxRaw = (q.box as string | undefined) || "open";
+    const box: Box = (
+      ["unassigned", "mine", "open", "closed", "all"] as const
+    ).includes(boxRaw as any)
+      ? (boxRaw as Box)
+      : "open";
+
+    // sort=lastMessageDesc|lastMessageAsc|createdAtDesc|createdAtAsc
+    const sortRaw = (q.sort as string | undefined) || "lastMessageDesc";
+
+    const page = Math.max(parseInt(q.p ?? q.page ?? "1", 10) || 1, 1);
+    const pageSizeRaw = parseInt(q.ps ?? q.pageSize ?? "20", 10) || 20;
+    const pageSize = Math.min(Math.max(pageSizeRaw, 1), 100);
+    const skip = (page - 1) * pageSize;
+
+    const where: any = {};
+
+    if (box === "unassigned") {
+      where.status = ConvStatus.OPEN;
+      where.assignedToId = null;
+    } else if (box === "mine") {
+      where.assignedToId = me.sub;
+    } else if (box === "open") {
+      where.status = ConvStatus.OPEN;
+    } else if (box === "closed") {
+      where.status = { in: [ConvStatus.RESOLVED, ConvStatus.CLOSED] };
+    }
+    // box === "all" → sin filtro extra
+
+    let orderBy: any = { lastMessageAt: "desc" as const };
+    if (sortRaw === "lastMessageAsc") {
+      orderBy = { lastMessageAt: "asc" };
+    } else if (sortRaw === "createdAtAsc") {
+      orderBy = { createdAt: "asc" };
+    } else if (sortRaw === "createdAtDesc") {
+      orderBy = { createdAt: "desc" };
+    }
+
+    const [rows, total] = await Promise.all([
+      app.prisma.conversation.findMany({
+        where,
+        orderBy,
+        skip,
+        take: pageSize,
+      }),
+      app.prisma.conversation.count({ where }),
+    ]);
+
+    // 🔧 Normalizamos priority por si hay null en DB
+    const items = rows.map((c) => ({
+      ...c,
+      priority: c.priority ?? ConvPriority.NORMAL,
+    }));
+
+    return {
+      items,
+      page,
+      pageSize,
+      total,
+    };
+  });
 
   // ─────────────────────────────────────────────────────────
-  // Mi última conversación
+  // Mi última conversación (vista cliente)
+  // GET /support/my/latest
   // ─────────────────────────────────────────────────────────
   app.get(
     "/my/latest",
@@ -91,6 +165,7 @@ export default async function supportRoutes(app: FastifyInstance) {
 
   // ─────────────────────────────────────────────────────────
   // Crear conversación (usuario autenticado)
+  // POST /support/conversations
   // ─────────────────────────────────────────────────────────
   app.post(
     "/conversations",
@@ -155,7 +230,7 @@ export default async function supportRoutes(app: FastifyInstance) {
             status: conv.status,
             assignedToId: conv.assignedToId ?? null,
             channel: conv.channel,
-            priority: conv.priority,
+            priority: conv.priority ?? ConvPriority.NORMAL,
             createdAt: conv.createdAt,
             updatedAt: conv.updatedAt,
             lastMessageAt: conv.lastMessageAt ?? now,
@@ -196,6 +271,7 @@ export default async function supportRoutes(app: FastifyInstance) {
 
         return {
           ...conv,
+          priority: conv.priority ?? ConvPriority.NORMAL,
           user: userLite,
           assignedTo: null,
         };
@@ -206,10 +282,60 @@ export default async function supportRoutes(app: FastifyInstance) {
     }
   );
 
-  // (mantengo intactas las rutas de listar, get conversation, etc…)
+  // ─────────────────────────────────────────────────────────
+  // Obtener conversación + mensajes (staff u owner)
+  // GET /support/conversations/:id
+  // ─────────────────────────────────────────────────────────
+  app.get(
+    "/conversations/:id",
+    { preHandler: [app.authenticate] },
+    async (req, reply) => {
+      const Params = z.object({ id: z.string().cuid() });
+      const { id } = Params.parse(req.params);
+
+      const conv = await app.prisma.conversation.findUnique({
+        where: { id },
+      });
+      if (!conv) return reply.notFound("No existe");
+
+      const me = req.user as { sub: string; role?: Role };
+      const isStaff = me.role === Role.SUPPORT || me.role === Role.ADMIN;
+      const isOwner = conv.userId && conv.userId === me.sub;
+      if (!isStaff && !isOwner) return reply.forbidden("Sin permisos");
+
+      const normalizedConv = {
+        ...conv,
+        priority: conv.priority ?? ConvPriority.NORMAL,
+      };
+
+      const messages = await app.prisma.message.findMany({
+        where: { conversationId: id },
+        orderBy: { createdAt: "asc" },
+        include: {
+          author: { select: { id: true, name: true, email: true, role: true } },
+          attachments: {
+            select: { id: true, url: true, mime: true, size: true },
+          },
+        },
+      });
+
+      const mapped = messages.map((m) => ({
+        ...m,
+        attachments: (m.attachments || []).map((a) => ({
+          id: a.id,
+          url: a.url,
+          mime: a.mime,
+          bytes: a.size ?? 0,
+        })),
+      }));
+
+      return { conversation: normalizedConv, messages: mapped };
+    }
+  );
 
   // ─────────────────────────────────────────────────────────
   // Enviar mensaje (dueño o staff) con adjuntos
+  // POST /support/conversations/:id/messages
   // ─────────────────────────────────────────────────────────
   const AttachmentInput = z.object({
     url: z.string().url(),
@@ -308,7 +434,7 @@ export default async function supportRoutes(app: FastifyInstance) {
         return { msg: created, atts: createdAtts };
       });
 
-      // 🔔 Notificación: respuesta de soporte al cliente
+      // 🔔 Notificación in-app: respuesta de soporte al cliente
       if (kind === MsgKind.AGENT && conv.userId) {
         try {
           await notifyUserInApp(app.prisma, {
@@ -381,6 +507,7 @@ export default async function supportRoutes(app: FastifyInstance) {
 
   // ─────────────────────────────────────────────────────────
   // Marcar visto
+  // POST /support/conversations/:id/seen
   // ─────────────────────────────────────────────────────────
   app.post(
     "/conversations/:id/seen",
@@ -428,6 +555,7 @@ export default async function supportRoutes(app: FastifyInstance) {
 
   // ─────────────────────────────────────────────────────────
   // Asignar agente
+  // POST /support/conversations/:id/assign
   // ─────────────────────────────────────────────────────────
   app.post(
     "/conversations/:id/assign",
@@ -470,6 +598,7 @@ export default async function supportRoutes(app: FastifyInstance) {
 
   // ─────────────────────────────────────────────────────────
   // Cambiar estado (marca resolvedAt cuando corresponde)
+  // POST /support/conversations/:id/status
   // ─────────────────────────────────────────────────────────
   app.post(
     "/conversations/:id/status",
@@ -502,6 +631,7 @@ export default async function supportRoutes(app: FastifyInstance) {
 
   // ─────────────────────────────────────────────────────────
   // Cambiar prioridad
+  // POST /support/conversations/:id/priority
   // ─────────────────────────────────────────────────────────
   app.post(
     "/conversations/:id/priority",
@@ -531,6 +661,7 @@ export default async function supportRoutes(app: FastifyInstance) {
 
   // ─────────────────────────────────────────────────────────
   // Tags: añadir / quitar
+  // POST /support/conversations/:id/tags
   // ─────────────────────────────────────────────────────────
   app.post(
     "/conversations/:id/tags",
@@ -578,6 +709,7 @@ export default async function supportRoutes(app: FastifyInstance) {
     }
   );
 
+  // GET /support/tags (staff)
   app.get("/tags", { preHandler: [app.requireStaff] }, async () => {
     const rows = await app.prisma.conversationTag.groupBy({
       by: ["tag"],
@@ -589,7 +721,8 @@ export default async function supportRoutes(app: FastifyInstance) {
   });
 
   // ─────────────────────────────────────────────────────────
-  // STREAM staff
+  // STREAM staff (SSE global)
+  // GET /support/stream?token=...
   // ─────────────────────────────────────────────────────────
   app.get("/stream", async (req, reply) => {
     try {
@@ -627,7 +760,8 @@ export default async function supportRoutes(app: FastifyInstance) {
   });
 
   // ─────────────────────────────────────────────────────────
-  // STREAM por conversación
+  // STREAM por conversación (SSE)
+  // GET /support/conversations/:id/stream?token=...
   // ─────────────────────────────────────────────────────────
   app.get("/conversations/:id/stream", async (req, reply) => {
     const Params = z.object({ id: z.string().cuid() });
