@@ -1,3 +1,12 @@
+<div align="right">
+  <a href="README.en.md">
+    <img alt="English" src="https://img.shields.io/badge/lang-EN-informational?style=flat-square">
+  </a>
+  <a href="README.md">
+    <img alt="Español" src="https://img.shields.io/badge/idioma-ES-success?style=flat-square">
+  </a>
+</div>
+
 # 🛒 Tienda Virtual
 
 Tienda virtual full-stack con **frontend en React + TypeScript + Vite** y un **panel de administración** para gestionar productos, stock, contenido de la página de inicio y ahora también **favoritos y notificaciones**.
