@@ -5,48 +5,42 @@ export type CartItem = {
   productId: string;
   slug: string;
   name: string;
-  price: number;   // cents
-  qty: number;     // >= 1
-  maxStock?: number; // opcional: límite superior (stock actual)
+  price: number; // cents
+  qty: number; // >= 1
+  maxStock?: number; // límite superior (stock actual)
+  imageUrl?: string | null; // 👈 nueva: imagen principal del producto
+  currency?: string | null; // 👈 nueva: moneda base (ej: "USD")
 };
 
 type CartState = {
   items: CartItem[];
 
-  /** Agrega (o incrementa) un producto. Respeta qty del 2º arg o del objeto.
-   *  Si existe maxStock, no permite superar ese límite. */
   add: (
-    item: Partial<CartItem> & Pick<CartItem, "productId" | "slug" | "name" | "price">,
+    item: Partial<CartItem> &
+      Pick<CartItem, "productId" | "slug" | "name" | "price">,
     qty?: number
   ) => void;
 
-  /** Fija la cantidad exacta; si qty <= 0, elimina. Respeta maxStock si existe. */
   setQty: (productId: string, qty: number) => void;
 
-  /** Incrementa/decrementa respetando maxStock. */
   increment: (productId: string, step?: number) => void;
   decrement: (productId: string, step?: number) => void;
 
-  /** Elimina el producto. */
   remove: (productId: string) => void;
 
-  /** Limpia el carrito. */
   clear: () => void;
 
-  /** Cantidad total de unidades. */
   count: () => number;
 
-  /** Subtotal en centavos. */
   subtotalCents: () => number;
 
-  /** Actualiza el maxStock de un producto y clampa su qty si es necesario. */
   updateMaxStock: (productId: string, maxStock?: number) => void;
 
-  /** Actualiza varios stocks a la vez. */
-  syncMaxStocks: (rows: Array<{ productId: string; maxStock?: number }>) => void;
+  syncMaxStocks: (
+    rows: Array<{ productId: string; maxStock?: number }>
+  ) => void;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 const LS_KEY = "cart:v3";
 const MAX_QTY = 99;
 
@@ -64,7 +58,7 @@ function clampAllowedMaxStock(n: unknown) {
 
 function allowedMaxFor(item?: CartItem | null) {
   const s = clampAllowedMaxStock(item?.maxStock);
-  return s === undefined ? MAX_QTY : s; // si no hay stock definido, solo limite global
+  return s === undefined ? MAX_QTY : s;
 }
 
 function normalizeItem(raw: any): CartItem | null {
@@ -75,6 +69,14 @@ function normalizeItem(raw: any): CartItem | null {
   const priceNum = Number(raw.price);
   const qtyNum = Number(raw.qty);
   const maxStock = clampAllowedMaxStock(raw.maxStock);
+  const imageUrl =
+    typeof raw.imageUrl === "string" && raw.imageUrl.trim().length > 0
+      ? raw.imageUrl.trim()
+      : undefined;
+  const currency =
+    typeof raw.currency === "string" && raw.currency.trim().length > 0
+      ? raw.currency.trim().toUpperCase()
+      : undefined;
 
   if (!productId || !slug || !name) return null;
 
@@ -82,11 +84,15 @@ function normalizeItem(raw: any): CartItem | null {
   if (maxStock === 0) return null;
 
   const limit = maxStock ?? MAX_QTY;
-  const price = Number.isFinite(priceNum) ? Math.max(0, Math.round(priceNum)) : 0;
+  const price = Number.isFinite(priceNum)
+    ? Math.max(0, Math.round(priceNum))
+    : 0;
   const qty = clampInt(qtyNum || 1, 1, limit);
 
   const base: CartItem = { productId, slug, name, price, qty };
   if (maxStock !== undefined) base.maxStock = maxStock;
+  if (imageUrl) base.imageUrl = imageUrl;
+  if (currency) base.currency = currency;
   return base;
 }
 
@@ -98,38 +104,49 @@ export const useCartStore = create<CartState>()(
       add: (item, qty) =>
         set((state) => {
           const incomingQty = clampInt(
-            Number.isFinite(qty as number) ? (qty as number) : (item.qty as number) ?? 1,
+            Number.isFinite(qty as number)
+              ? (qty as number)
+              : (item.qty as number) ?? 1,
             1,
             MAX_QTY
           );
           const incomingMax = clampAllowedMaxStock(item.maxStock);
 
-          // Si el producto ya existe, usamos su maxStock actual (si lo tuviera)
-          const idx = state.items.findIndex((x) => x.productId === item.productId);
+          // ¿ya existe en el carrito?
+          const idx = state.items.findIndex(
+            (x) => x.productId === item.productId
+          );
           if (idx >= 0) {
             const next = [...state.items];
             const current = next[idx];
 
-            // Elegimos el límite: prioridad al que exista (si viene nuevo y es menor, usamos el menor)
             const currentLimit = allowedMaxFor(current);
             const incomingLimit = incomingMax ?? currentLimit;
             const limit = Math.min(currentLimit, incomingLimit);
 
-            // Clampeamos sumando
             const nextQty = clampInt(current.qty + incomingQty, 1, limit);
 
             next[idx] = {
               ...current,
               qty: nextQty,
-              // si llega un maxStock más restrictivo, lo guardamos
-              maxStock: incomingMax !== undefined ? Math.min(limit, incomingMax) : current.maxStock,
+              maxStock:
+                incomingMax !== undefined
+                  ? Math.min(limit, incomingMax)
+                  : current.maxStock,
+              // si nos llega imagen / moneda y antes no había, las guardamos
+              ...(item.imageUrl ? { imageUrl: item.imageUrl } : null),
+              ...(item.currency ? { currency: item.currency } : null),
             };
             return { items: next };
           }
 
-          // Nuevo ítem
-          const norm = normalizeItem({ ...item, qty: incomingQty, maxStock: incomingMax });
-          if (!norm) return state; // puede ser null si maxStock=0 o faltan datos
+          // nuevo ítem
+          const norm = normalizeItem({
+            ...item,
+            qty: incomingQty,
+            maxStock: incomingMax,
+          });
+          if (!norm) return state;
           return { items: [...state.items, norm] };
         }),
 
@@ -141,7 +158,7 @@ export const useCartStore = create<CartState>()(
             const q = clampInt(qty, 1, limit);
             return { ...it, qty: q };
           });
-          return { items: next.filter((x) => x.qty >= 1) }; // por seguridad
+          return { items: next.filter((x) => x.qty >= 1) };
         }),
 
       increment: (productId, step = 1) =>
@@ -177,7 +194,10 @@ export const useCartStore = create<CartState>()(
       count: () => get().items.reduce((a, b) => a + (b.qty || 0), 0),
 
       subtotalCents: () =>
-        get().items.reduce((a, b) => a + Math.max(0, Math.round(b.price)) * b.qty, 0),
+        get().items.reduce(
+          (a, b) => a + Math.max(0, Math.round(b.price)) * b.qty,
+          0
+        ),
 
       updateMaxStock: (productId, maxStock) =>
         set((state) => {
@@ -222,19 +242,17 @@ export const useCartStore = create<CartState>()(
       version: 3,
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => ({ items: s.items }),
-      migrate: (persisted: any, fromVersion) => {
-        // Normaliza items de versiones anteriores; respeta maxStock si existe
+      migrate: (persisted: any) => {
         const rawItems = Array.isArray(persisted?.items) ? persisted.items : [];
         const items = rawItems
           .map((r) => {
             const norm = normalizeItem(r);
-            // si antes había qty > maxStock (nuevo), clamp aquí
             if (norm && r?.maxStock !== undefined) {
               const s = clampAllowedMaxStock(r.maxStock);
               if (s !== undefined) {
                 norm.maxStock = s;
                 norm.qty = clampInt(norm.qty, 1, s === 0 ? 1 : s);
-                if (s === 0) return null; // sin stock → fuera del carrito
+                if (s === 0) return null;
               }
             }
             return norm;
