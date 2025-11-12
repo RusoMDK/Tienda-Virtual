@@ -322,7 +322,6 @@ function draftToPayload(draft: Draft) {
         config = baseCfg;
       }
 
-      // Layout alineado con el Hero del Home (full-bleed tipo Amazon)
       layout = {
         kind: "hero",
         align: "left",
@@ -1498,20 +1497,7 @@ export default function AdminHomePage() {
               />
               Mostrar botón “Agregar al carrito”
             </label>
-            <label className="flex items-center gap-2 text-xs">
-              <Switch
-                checked={draft.prodShowRating}
-                onChange={(val) =>
-                  setDraft((d) => ({ ...d, prodShowRating: !!val }))
-                }
-              />
-              Mostrar rating si hay reseñas
-            </label>
           </div>
-
-          {/* (Opcional) aquí se podrían exponer controles de estilo extra:
-              panel flotante, forma de tarjeta, densidad, railStyle, etc.
-              De momento se gestionan principalmente vía plantillas. */}
         </div>
       );
     }
@@ -1831,11 +1817,19 @@ export default function AdminHomePage() {
                     s.type;
                   return (
                     <li key={s.id}>
-                      <button
-                        type="button"
+                      {/* CAMBIO: div con role="button" para evitar button dentro de button */}
+                      <div
+                        role="button"
+                        tabIndex={0}
                         onClick={() => selectSection(s)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            selectSection(s);
+                          }
+                        }}
                         className={[
-                          "w-full flex items-center gap-2 rounded-xl border px-2 py-2 text-left text-xs transition",
+                          "w-full flex items-center gap-2 rounded-xl border px-2 py-2 text-left text-xs transition cursor-pointer",
                           "border-[rgb(var(--border-rgb))] bg-[rgb(var(--card-2-rgb))]",
                           "hover:bg-[rgb(var(--muted-rgb))]",
                           isSelected
@@ -1889,7 +1883,7 @@ export default function AdminHomePage() {
                             </button>
                           </div>
                         </div>
-                      </button>
+                      </div>
                     </li>
                   );
                 })}
@@ -2289,7 +2283,7 @@ function PreviewSection({ section }: { section: TemplateSectionSeed }) {
             <p className="text-xs md:text-sm opacity-80">{section.subtitle}</p>
           )}
           <div className="flex flex-wrap justify-center md:justify-start gap-2 mt-1">
-            <span className="inline-flex items-center rounded-full bg-emerald-500 text-[10px] md:text-xs px-3 py-1 text-[rgb(var(--bg-rgb))]">
+            <span className="inline-flex items-center rounded-full bg-emerald-500 text-[10px] md:text-xs px-3 py-1 text-white">
               Botón principal
             </span>
             {cfg.showSearch && (
@@ -2412,8 +2406,8 @@ function PreviewSection({ section }: { section: TemplateSectionSeed }) {
       tone === "dark"
         ? "bg-zinc-900/80 border-zinc-700 text-zinc-50"
         : tone === "brand"
-        ? "bg-emerald-500/12 border-emerald-500/40 text-[rgb(var(--fg-rgb))]"
-        : "bg-emerald-500/8 border-emerald-500/30 text-[rgb(var(--fg-rgb))]";
+        ? "bg-[rgb(var(--primary-rgb))/0.08] border-[rgb(var(--primary-rgb))/0.35]"
+        : "bg-[rgb(var(--card-2-rgb))] border-[rgb(var(--border-rgb))]";
 
     return (
       <div
@@ -2429,7 +2423,7 @@ function PreviewSection({ section }: { section: TemplateSectionSeed }) {
           )}
         </div>
         {cfg.ctaLabel && (
-          <span className="inline-flex items-center rounded-full bg-emerald-500 text-[10px] md:text-xs px-3 py-1 text-[rgb(var(--bg-rgb))]">
+          <span className="inline-flex items-center rounded-full bg-emerald-500 text-[10px] md:text-xs px-3 py-1 text-white">
             {cfg.ctaLabel}
           </span>
         )}

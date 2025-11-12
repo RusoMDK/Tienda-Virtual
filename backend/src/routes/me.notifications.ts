@@ -18,16 +18,19 @@ export default async function meNotificationsRoutes(
   const prisma = (app as any).prisma;
 
   const getUserId = (request: any, reply: any): string | undefined => {
-    const user = request.user as { id: string } | undefined;
-    if (!user?.id) {
+    const user = request.user as { sub?: string; id?: string } | undefined;
+    const userId = user?.sub ?? user?.id;
+
+    if (!userId) {
       reply.unauthorized("Authentication required");
       return;
     }
-    return user.id;
+
+    return userId;
   };
 
   // GET /me/notifications?page=1&pageSize=20
-  app.get("/", async (request, reply) => {
+  app.get("/", { preHandler: [app.authenticate] }, async (request, reply) => {
     const userId = getUserId(request, reply);
     if (!userId) return;
 
@@ -62,172 +65,200 @@ export default async function meNotificationsRoutes(
   });
 
   // GET /me/notifications/unread-count
-  app.get("/unread-count", async (request, reply) => {
-    const userId = getUserId(request, reply);
-    if (!userId) return;
+  app.get(
+    "/unread-count",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const userId = getUserId(request, reply);
+      if (!userId) return;
 
-    const count = await prisma.notification.count({
-      where: { userId, archived: false, isRead: false },
-    });
+      const count = await prisma.notification.count({
+        where: { userId, archived: false, isRead: false },
+      });
 
-    return reply.send({ count });
-  });
+      return reply.send({ count });
+    }
+  );
 
   // PATCH /me/notifications/:id/read
-  app.patch("/:id/read", async (request, reply) => {
-    const userId = getUserId(request, reply);
-    if (!userId) return;
+  app.patch(
+    "/:id/read",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const userId = getUserId(request, reply);
+      if (!userId) return;
 
-    const { id } = request.params as { id: string };
+      const { id } = request.params as { id: string };
 
-    const notification = await prisma.notification.findFirst({
-      where: { id, userId },
-    });
+      const notification = await prisma.notification.findFirst({
+        where: { id, userId },
+      });
 
-    if (!notification) {
-      return reply.notFound("Notification not found");
+      if (!notification) {
+        return reply.notFound("Notification not found");
+      }
+
+      if (notification.isRead) {
+        return reply.send(notification);
+      }
+
+      const updated = await prisma.notification.update({
+        where: { id },
+        data: {
+          isRead: true,
+          readAt: new Date(),
+        },
+      });
+
+      return reply.send(updated);
     }
-
-    if (notification.isRead) {
-      return reply.send(notification);
-    }
-
-    const updated = await prisma.notification.update({
-      where: { id },
-      data: {
-        isRead: true,
-        readAt: new Date(),
-      },
-    });
-
-    return reply.send(updated);
-  });
+  );
 
   // POST /me/notifications/mark-all-read
-  app.post("/mark-all-read", async (request, reply) => {
-    const userId = getUserId(request, reply);
-    if (!userId) return;
+  app.post(
+    "/mark-all-read",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const userId = getUserId(request, reply);
+      if (!userId) return;
 
-    const result = await prisma.notification.updateMany({
-      where: { userId, isRead: false, archived: false },
-      data: { isRead: true, readAt: new Date() },
-    });
+      const result = await prisma.notification.updateMany({
+        where: { userId, isRead: false, archived: false },
+        data: { isRead: true, readAt: new Date() },
+      });
 
-    return reply.send({ updated: result.count });
-  });
+      return reply.send({ updated: result.count });
+    }
+  );
 
   // POST /me/notifications/:id/archive
-  app.post("/:id/archive", async (request, reply) => {
-    const userId = getUserId(request, reply);
-    if (!userId) return;
+  app.post(
+    "/:id/archive",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const userId = getUserId(request, reply);
+      if (!userId) return;
 
-    const { id } = request.params as { id: string };
+      const { id } = request.params as { id: string };
 
-    const notification = await prisma.notification.findFirst({
-      where: { id, userId },
-    });
+      const notification = await prisma.notification.findFirst({
+        where: { id, userId },
+      });
 
-    if (!notification) {
-      return reply.notFound("Notification not found");
+      if (!notification) {
+        return reply.notFound("Notification not found");
+      }
+
+      const updated = await prisma.notification.update({
+        where: { id },
+        data: { archived: true },
+      });
+
+      return reply.send(updated);
     }
-
-    const updated = await prisma.notification.update({
-      where: { id },
-      data: { archived: true },
-    });
-
-    return reply.send(updated);
-  });
+  );
 
   // GET /me/notifications/preferences
-  app.get("/preferences", async (request, reply) => {
-    const userId = getUserId(request, reply);
-    if (!userId) return;
+  app.get(
+    "/preferences",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const userId = getUserId(request, reply);
+      if (!userId) return;
 
-    let prefs = await prisma.notificationPreference.findUnique({
-      where: { userId },
-    });
-
-    if (!prefs) {
-      prefs = await prisma.notificationPreference.create({
-        data: { userId },
+      let prefs = await prisma.notificationPreference.findUnique({
+        where: { userId },
       });
-    }
 
-    return reply.send(prefs);
-  });
+      if (!prefs) {
+        prefs = await prisma.notificationPreference.create({
+          data: { userId },
+        });
+      }
+
+      return reply.send(prefs);
+    }
+  );
 
   // PATCH /me/notifications/preferences
-  app.patch("/preferences", async (request, reply) => {
-    const userId = getUserId(request, reply);
-    if (!userId) return;
+  app.patch(
+    "/preferences",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const userId = getUserId(request, reply);
+      if (!userId) return;
 
-    const body = (request.body || {}) as NotificationPreferencesPayload;
+      const body = (request.body || {}) as NotificationPreferencesPayload;
 
-    const data: NotificationPreferencesPayload = {};
-    const allowed: (keyof NotificationPreferencesPayload)[] = [
-      "emailOrderUpdates",
-      "emailSecurityAlerts",
-      "emailPromotions",
-      "inAppOrderUpdates",
-      "inAppSecurityAlerts",
-      "inAppPromotions",
-    ];
+      const data: NotificationPreferencesPayload = {};
+      const allowed: (keyof NotificationPreferencesPayload)[] = [
+        "emailOrderUpdates",
+        "emailSecurityAlerts",
+        "emailPromotions",
+        "inAppOrderUpdates",
+        "inAppSecurityAlerts",
+        "inAppPromotions",
+      ];
 
-    for (const key of allowed) {
-      if (key in body) {
-        (data as any)[key] = Boolean((body as any)[key]);
+      for (const key of allowed) {
+        if (key in body) {
+          (data as any)[key] = Boolean((body as any)[key]);
+        }
       }
-    }
 
-    let prefs = await prisma.notificationPreference.findUnique({
-      where: { userId },
-    });
-
-    if (!prefs) {
-      prefs = await prisma.notificationPreference.create({
-        data: { userId, ...(data as any) },
-      });
-    } else {
-      prefs = await prisma.notificationPreference.update({
+      let prefs = await prisma.notificationPreference.findUnique({
         where: { userId },
-        data: data as any,
       });
-    }
 
-    return reply.send(prefs);
-  });
+      if (!prefs) {
+        prefs = await prisma.notificationPreference.create({
+          data: { userId, ...(data as any) },
+        });
+      } else {
+        prefs = await prisma.notificationPreference.update({
+          where: { userId },
+          data: data as any,
+        });
+      }
+
+      return reply.send(prefs);
+    }
+  );
 
   // SSE: GET /me/notifications/stream
-  app.get("/stream", async (request, reply) => {
-    const userId = getUserId(request, reply);
-    if (!userId) return;
+  app.get(
+    "/stream",
+    { preHandler: [app.authenticate] },
+    async (request, reply) => {
+      const userId = getUserId(request, reply);
+      if (!userId) return;
 
-    // Enviar un bootstrap con las últimas notificaciones
-    const latest = await prisma.notification.findMany({
-      where: { userId, archived: false },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    });
-
-    reply.sse({
-      event: "bootstrap",
-      data: JSON.stringify({ items: latest }),
-    });
-
-    const handler = (payload: any) => {
-      if (!payload || payload.userId !== userId) return;
+      // Bootstrap con últimas notificaciones
+      const latest = await prisma.notification.findMany({
+        where: { userId, archived: false },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      });
 
       reply.sse({
-        event: "notification",
-        data: JSON.stringify(payload.notification),
+        event: "bootstrap",
+        data: JSON.stringify({ items: latest }),
       });
-    };
 
-    notificationEvents.on("in-app", handler);
+      const handler = (payload: any) => {
+        if (!payload || payload.userId !== userId) return;
 
-    request.raw.on("close", () => {
-      notificationEvents.off("in-app", handler);
-    });
-  });
+        reply.sse({
+          event: "notification",
+          data: JSON.stringify(payload.notification),
+        });
+      };
+
+      notificationEvents.on("in-app", handler);
+
+      request.raw.on("close", () => {
+        notificationEvents.off("in-app", handler);
+      });
+    }
+  );
 }
