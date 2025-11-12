@@ -165,7 +165,6 @@ export default async function supportRoutes(app: FastifyInstance) {
 
   // ─────────────────────────────────────────────────────────
   // Crear conversación (usuario autenticado)
-  // POST /support/conversations
   // ─────────────────────────────────────────────────────────
   app.post(
     "/conversations",

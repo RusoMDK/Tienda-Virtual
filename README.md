@@ -1,8 +1,8 @@
 # 🛒 Tienda Virtual
 
-Tienda virtual full-stack con **frontend en React + TypeScript + Vite** y un **panel de administración** para gestionar productos, stock y contenido de la página de inicio.
+Tienda virtual full-stack con **frontend en React + TypeScript + Vite** y un **panel de administración** para gestionar productos, stock, contenido de la página de inicio y ahora también **favoritos y notificaciones**.
 
-Pensada como una base sólida para un e-commerce moderno: catálogo rápido, detalle de producto cuidado, carrito integrado y herramientas para el administrador (importación CSV, ajuste de stock, edición visual del home, etc.).
+Pensada como una base sólida para un e-commerce moderno: catálogo rápido, detalle de producto cuidado, carrito integrado, **lista de deseos**, **centro de notificaciones**, multi-moneda, multi-idioma y herramientas para el administrador (importación CSV, ajuste de stock, edición visual del home, etc.).
 
 ---
 
@@ -53,6 +53,7 @@ Pensada como una base sólida para un e-commerce moderno: catálogo rápido, det
   - Upload por slide en el hero y subida masiva para carruseles.
 
 - 🎨 **UI / UX**
+
   - Diseño moderno con **Tailwind CSS** y componentes reutilizables.
   - Layout responsivo pensado para desktop y laptops (y mobile-ready).
   - Estados de carga y skeletons para una mejor percepción de velocidad.
@@ -82,12 +83,22 @@ Pensada como una base sólida para un e-commerce moderno: catálogo rápido, det
   - Plantilla CSV de ejemplo descargable.
 
 - 🧩 **Home editable**
+
   - Configuración visual de secciones de inicio.
   - **Plantillas de home** (HERO, PRODUCT_GRID, PRODUCT_STRIP, CATEGORY_STRIP, BANNER, TEXT_BLOCK).
   - Subida directa a Cloudinary para fondo del hero y slides.
   - Reordenamiento de secciones y slides.
   - **Corrección de HTML semántico** (sin botones anidados) para evitar errores de hidratación.
   - Tokens de color que **respetan light/dark** en textos y fondos.
+
+- 📨 **Notificaciones (backend)**
+
+  - Modelo de notificación en base de datos mediante Prisma.
+  - Servicio para crear notificaciones ligadas a eventos (pedidos, soporte, seguridad, wishlist, etc.).
+  - Rutas protegidas para:
+    - Listar notificaciones del usuario.
+    - Marcar como leídas.
+    - Configurar preferencias básicas.
 
 ---
 
@@ -104,16 +115,18 @@ Pensada como una base sólida para un e-commerce moderno: catálogo rápido, det
   - `Button`, `Card`, `Dialog`, `Modal`, `Input`, `Badge`, `Dropdown`, `Skeleton`, `Toast`, etc.
 - 🧭 React Router para las rutas:
   - `/` – Home
-  - `/products` – Catálogo
+  - `/search` – Búsqueda con filtros y categorías
   - `/product/:slug` – Detalle de producto
   - `/cart` – Carrito
   - `/checkout` – Checkout
   - `/wishlist` – Favoritos (si lo habilitas)
   - `/admin/...` – Panel de administración
 
-### Backend
+- 🧱 Sistema de componentes en `src/ui`:
+  - `Button`, `Card`, `Dialog`, `Modal`, `Input`, `Badge`, `Dropdown`,  
+    `Skeleton`, `Toast`, `NotificationBell`, etc.
 
-> Ajusta esta sección según tu implementación real.
+### Backend
 
 - 🟢 Node.js (Fastify/Express) + TypeScript (opcional)
 - Persistencia: PostgreSQL/MySQL/SQLite (según prisma/ORM)
